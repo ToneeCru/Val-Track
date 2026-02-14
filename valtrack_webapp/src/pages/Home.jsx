@@ -76,7 +76,7 @@ export default function Home() {
                 <div
                     className="absolute inset-0 z-0"
                     style={{
-                        backgroundImage: 'url(/images/login-bg.jpg)',
+                        backgroundImage: 'url(/login-bg.jpg)',
                         backgroundSize: 'cover',
                         backgroundPosition: 'center',
                     }}
@@ -86,7 +86,7 @@ export default function Home() {
                 <div className="max-w-md text-center relative z-10">
                     <div className="mb-8 flex justify-center">
                         <img
-                            src="/images/valtrack-logo.png"
+                            src="/valtrack-logo.png"
                             alt="Val-Track Logo"
                             className="w-64 h-64 rounded-full object-cover border-4 border-white/20 shadow-2xl"
                         />
@@ -101,7 +101,7 @@ export default function Home() {
                     <div className="lg:hidden text-center mb-8">
                         <div className="flex justify-center mb-4">
                             <img
-                                src="/images/valtrack-logo.png"
+                                src="/valtrack-logo.png"
                                 alt="Val-Track Logo"
                                 className="w-40 h-40 rounded-full object-cover border-4 border-[#00104A]/10 shadow-lg"
                             />

@@ -114,7 +114,7 @@ export default function Sidebar({ role }) {
             <div
                 className="absolute inset-0 z-0"
                 style={{
-                    backgroundImage: 'url(/images/login-bg.jpg)',
+                    backgroundImage: 'url(/login-bg.jpg)',
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
                 }}
@@ -126,7 +126,7 @@ export default function Sidebar({ role }) {
                 <div className="p-6 border-b border-white/10 backdrop-blur-sm">
                     <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 p-0.5 flex items-center justify-center shadow-inner border border-white/10">
-                            <img src="/images/valtrack-logo-icon.png" alt="Val-Track" className="w-full h-full object-cover rounded-[10px]" />
+                            <img src="/valtrack-logo-icon.png" alt="Val-Track" className="w-full h-full object-cover rounded-[10px]" />
                         </div>
                         <div>
                             <h1 className="text-white font-bold text-lg leading-tight">Val-Track</h1>
