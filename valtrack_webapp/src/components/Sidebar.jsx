@@ -175,7 +175,7 @@ export default function Sidebar({ role }) {
                             const isActive = location.pathname === item.path;
                             const Icon = item.icon || LayoutDashboard;
                             return (
-                                <Link key={item.path || index} to={item.path} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group relative overflow-hidden ${isActive ? 'text-white shadow-lg shadow-blue-900/20' : 'text-gray-400 hover:text-white hover:bg-white/5 hover:shadow-md'}`}>
+                                <Link key={item.path || index} to={item.path} className={`flex items-center gap-3 px-4 py-3 rounded-xl group relative overflow-hidden ${isActive ? 'text-white shadow-lg shadow-blue-900/20' : 'text-gray-400 hover:text-white hover:bg-white/5 hover:shadow-md'}`}>
                                     {isActive && <div className="absolute inset-0 opacity-20 bg-gradient-to-r from-[#56CBF9] via-blue-500 to-blue-600" />}
                                     {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-[#56CBF9] rounded-r-full shadow-[0_0_12px_#56CBF9]" />}
                                     <Icon className={`w-5 h-5 flex-shrink-0 transition-transform duration-300 ${isActive ? 'scale-110 text-[#56CBF9]' : 'group-hover:scale-110 group-hover:text-gray-300'}`} />

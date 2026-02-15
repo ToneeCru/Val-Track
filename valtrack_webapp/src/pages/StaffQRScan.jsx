@@ -11,8 +11,11 @@ import {
     ArrowUpRight,
     ArrowDownRight,
     MapPin,
-    RotateCcw
+    RotateCcw,
+    Camera,
+    XCircle
 } from 'lucide-react';
+import { Scanner } from '@yudiel/react-qr-scanner';
 
 export default function StaffQRScan() {
     const navigate = useNavigate();
@@ -26,18 +29,12 @@ export default function StaffQRScan() {
 
     // Simulation / Scanning State
     // Using mock patrons for demo purposes as in original file
-    const [patrons, setPatrons] = useState([
-        { id: 'P-2024-001', name: 'Juan Dela Cruz' },
-        { id: 'P-2024-002', name: 'Maria Santos' },
-        { id: 'P-2024-003', name: 'Pedro Reyes' },
-        { id: 'P-2024-004', name: 'Ana Garcia' },
-        { id: 'P-2024-005', name: 'Carlos Rodriguez' },
-    ]);
-    const [activePatrons, setActivePatrons] = useState([]); // List of attendance records
+
     const [scanResult, setScanResult] = useState(null);
     const [isScanning, setIsScanning] = useState(false);
     const [scanHistory, setScanHistory] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isCameraOpen, setIsCameraOpen] = useState(false);
 
     useEffect(() => {
         const sessionData = localStorage.getItem('valtrack_session');
@@ -157,7 +154,7 @@ export default function StaffQRScan() {
         }
     };
 
-    const handleDemoScan = async (patron) => {
+    const processPatronCheck = async (patron) => {
         if (!selectedArea) {
             toast.error("Please select an area first");
             return;
@@ -168,7 +165,14 @@ export default function StaffQRScan() {
 
         try {
             // Check if patron is active in ANY area of this branch
-            const existingRecord = activePatrons.find(a => a.patron_id === patron.id);
+            // Refresh active patrons first to be safe
+            const { data: currentActive } = await supabase
+                .from('area_attendance')
+                .select('*')
+                .eq('status', 'active')
+                .in('area_id', areas.map(a => a.id));
+
+            const existingRecord = (currentActive || []).find(a => a.patron_id === patron.id);
 
             if (existingRecord) {
                 // If active in CURRENT area -> Check OUT
@@ -187,7 +191,7 @@ export default function StaffQRScan() {
                         user_name: session.name || 'Staff',
                         action: 'Patron Check-Out',
                         module: 'QR Scan',
-                        details: `${patron.name} (${patron.id}) checked OUT from ${selectedArea.name}`,
+                        details: `${patron.firstname} ${patron.surname} (${patron.library_id}) checked OUT from ${selectedArea.name}`,
                         timestamp: new Date().toISOString(),
                         branch_id: selectedBranch.id
                     });
@@ -195,20 +199,19 @@ export default function StaffQRScan() {
                     setScanResult({
                         type: 'success',
                         action: 'out',
-                        message: `${patron.name} checked OUT successfully`,
-                        patron: patron
+                        message: `${patron.firstname} checked OUT successfully`,
+                        patron: { ...patron, name: `${patron.firstname} ${patron.surname}` }
                     });
                     toast.success('Check-out successful');
                 } else {
-                    // Active in DIFFERENT area -> Error or Auto-Transfer?
-                    // Typically error: "User is currently in [Other Area]. Please check out there first."
+                    // Active in DIFFERENT area -> Error
                     const otherArea = areas.find(a => a.id === existingRecord.area_id);
                     const otherAreaName = otherArea ? otherArea.name : 'another area';
 
                     setScanResult({
                         type: 'error',
                         message: `Patron is currently checked in at ${otherAreaName}. Please check out there first.`,
-                        patron: patron
+                        patron: { ...patron, name: `${patron.firstname} ${patron.surname}` }
                     });
                     toast.error(`Already in ${otherAreaName}`);
                 }
@@ -220,7 +223,7 @@ export default function StaffQRScan() {
                     setScanResult({
                         type: 'error',
                         message: `Capacity reached for ${selectedArea.name}. Cannot check in.`,
-                        patron: patron
+                        patron: { ...patron, name: `${patron.firstname} ${patron.surname}` }
                     });
                     toast.error('Area capacity reached');
                     return;
@@ -229,7 +232,7 @@ export default function StaffQRScan() {
                 const { error: insertError } = await supabase
                     .from('area_attendance')
                     .insert({
-                        patron_name: patron.name,
+                        patron_name: `${patron.firstname} ${patron.surname}`,
                         patron_id: patron.id,
                         area_id: selectedArea.id,
                         status: 'active',
@@ -242,7 +245,7 @@ export default function StaffQRScan() {
                     user_name: session.name || 'Staff',
                     action: 'Patron Check-In',
                     module: 'QR Scan',
-                    details: `${patron.name} (${patron.id}) checked IN to ${selectedArea.name}`,
+                    details: `${patron.firstname} ${patron.surname} (${patron.library_id}) checked IN to ${selectedArea.name}`,
                     timestamp: new Date().toISOString(),
                     branch_id: selectedBranch.id
                 });
@@ -250,8 +253,8 @@ export default function StaffQRScan() {
                 setScanResult({
                     type: 'success',
                     action: 'in',
-                    message: `${patron.name} checked IN successfully`,
-                    patron: patron
+                    message: `${patron.firstname} checked IN successfully`,
+                    patron: { ...patron, name: `${patron.firstname} ${patron.surname}` }
                 });
                 toast.success('Check-in successful');
             }
@@ -273,7 +276,67 @@ export default function StaffQRScan() {
             toast.error('Failed to process scan');
         } finally {
             setIsScanning(false);
+            // Close camera if open? Maybe keep it open for continous scanning
+            // setIsCameraOpen(false); 
         }
+    };
+
+    const handleScan = async (detectedCodes) => {
+        if (isScanning || !detectedCodes || detectedCodes.length === 0) return;
+
+        const scannedValue = detectedCodes[0].rawValue;
+        if (!scannedValue) return;
+
+        setIsScanning(true);
+        try {
+            // Find patron by library_id or id
+            // We use 'ilike' for case-insensitive match on library_id just in case
+            const { data: patron, error } = await supabase
+                .from('patrons')
+                .select('*')
+                .or(`library_id.eq.${scannedValue},id.eq.${scannedValue}`)
+                .maybeSingle();
+
+            if (error) throw error;
+
+            if (!patron) {
+                toast.error('Patron not found');
+                setScanResult({
+                    type: 'error',
+                    message: 'Patron not found',
+                    patron: { name: 'Unknown', id: scannedValue }
+                });
+                setIsScanning(false);
+                return;
+            }
+
+            await processPatronCheck(patron);
+
+        } catch (err) {
+            console.error(err);
+            toast.error('Error finding patron');
+            setIsScanning(false);
+        }
+    };
+
+    // Kept for backward compatibility with simulation buttons
+    const handleDemoScan = async (patron) => {
+        // We need to fetch the REAL patron object from DB based on ID from the mock list
+        // The mock list has IDs like 'P-2024-001' which might not exist in real DB.
+        // Assuming user wants to test with REAL data mostly.
+        // But for simulation, let's just use the mock object passed in if we can't find it?
+        // Actually, let's try to find it first.
+
+        // Use the passed patron object directly if simulating
+        // But the structure expected by processPatronCheck involves firstname/surname
+        // The mock object has 'name'. Let's adapt it.
+        const adaptedPatron = {
+            id: patron.id,
+            firstname: patron.name.split(' ')[0],
+            surname: patron.name.split(' ').slice(1).join(' '),
+            library_id: patron.id
+        };
+        await processPatronCheck(adaptedPatron);
     };
 
     if (!session) return null;
@@ -359,6 +422,59 @@ export default function StaffQRScan() {
                                 </div>
                             </div>
 
+                            {/* Scanner Section */}
+                            <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
+                                <div className="flex items-center justify-between mb-6">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                                            <Camera className="w-5 h-5 text-blue-600" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-semibold text-gray-900">QR Scanner</h3>
+                                            <p className="text-sm text-gray-500">Use your camera to scan patron QR codes</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => setIsCameraOpen(!isCameraOpen)}
+                                        className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${isCameraOpen
+                                            ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                                            }`}
+                                    >
+                                        {isCameraOpen ? (
+                                            <>
+                                                <XCircle className="w-4 h-4" /> Close Camera
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Camera className="w-4 h-4" /> Open Camera
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+
+                                {isCameraOpen && (
+                                    <div className="max-w-md mx-auto overflow-hidden rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 mb-4 relative">
+                                        <div className="aspect-square relative">
+                                            <Scanner
+                                                onScan={(result) => result && result.length > 0 && handleScan(result)}
+                                                onError={(error) => console.log(error?.message)}
+                                                styles={{
+                                                    container: { width: '100%', height: '100%' },
+                                                    video: { width: '100%', height: '100%', objectFit: 'cover' }
+                                                }}
+                                                components={{
+                                                    audio: false,
+                                                    torch: false,
+                                                    finder: true
+                                                }}
+                                            />
+                                        </div>
+                                        <p className="text-center text-xs text-gray-500 py-2">Point camera at QR code</p>
+                                    </div>
+                                )}
+                            </div>
+
                             {/* Scan Result */}
                             {scanResult && (
                                 <div className={`mb-8 p-6 rounded-xl border-l-4 shadow-sm animate-in fade-in slide-in-from-top-4 duration-300 ${scanResult.type === 'error' ? 'bg-red-50 border-red-500' : 'bg-green-50 border-green-500'
@@ -372,58 +488,13 @@ export default function StaffQRScan() {
                                         </div>
                                         <div>
                                             <h4 className={`font-bold text-lg ${scanResult.type === 'error' ? 'text-red-900' : 'text-green-900'}`}>{scanResult.message}</h4>
-                                            <p className="text-sm opacity-80">{scanResult.patron.name} ({scanResult.patron.id})</p>
+                                            <p className="text-sm opacity-80">{scanResult.patron.name} ({scanResult.patron.id || scanResult.patron.library_id})</p>
                                         </div>
                                     </div>
                                 </div>
                             )}
 
-                            {/* QR Codes Grid */}
-                            <div className="bg-white rounded-xl border border-gray-100 p-6 mb-8">
-                                <div className="flex items-center gap-3 mb-6">
-                                    <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-                                        <QrCode className="w-5 h-5 text-blue-600" />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-semibold text-gray-900">QR Code Simulation</h3>
-                                        <p className="text-sm text-gray-500">Tap to simulate scan in <strong>{selectedArea?.name || '...'}</strong></p>
-                                    </div>
-                                </div>
 
-                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                                    {patrons.map((patron) => {
-                                        // Check status in ANY area, but highlight specifically for current area
-                                        const record = activePatrons.find(a => a.patron_id === patron.id);
-                                        const isInCurrentArea = record && selectedArea && record.area_id === selectedArea.id;
-                                        const isInOtherArea = record && selectedArea && record.area_id !== selectedArea.id;
-
-                                        return (
-                                            <button
-                                                key={patron.id}
-                                                onClick={() => handleDemoScan(patron)}
-                                                disabled={isScanning || !selectedArea}
-                                                className={`p-4 rounded-xl border-2 text-center transition-all hover:shadow-md ${isInCurrentArea ? 'border-green-500 bg-green-50' :
-                                                    isInOtherArea ? 'border-amber-300 bg-amber-50 opacity-80' :
-                                                        'border-gray-200 hover:border-blue-300'
-                                                    } ${isScanning || !selectedArea ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                            >
-                                                <div className={`w-16 h-16 mx-auto mb-3 rounded-lg flex items-center justify-center ${isInCurrentArea ? 'bg-green-100 text-green-600' :
-                                                    isInOtherArea ? 'bg-amber-100 text-amber-600' :
-                                                        'bg-gray-100 text-gray-400'
-                                                    }`}>
-                                                    <QrCode className="w-10 h-10" />
-                                                </div>
-                                                <p className="font-bold text-sm text-gray-900 truncate">{patron.name}</p>
-                                                <p className="text-xs text-gray-500 mb-2">{patron.id}</p>
-
-                                                {isInCurrentArea && <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-green-200 text-green-800">HERE</span>}
-                                                {isInOtherArea && <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-amber-200 text-amber-800">OTHER AREA</span>}
-                                                {!record && <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-500">OUT</span>}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
                         </>
                     )}
                 </main>

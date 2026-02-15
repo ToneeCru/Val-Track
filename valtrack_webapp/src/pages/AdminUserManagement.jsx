@@ -814,8 +814,8 @@ export default function AdminUserManagement() {
                     {/* Tabs */}
                     <div className="flex items-center gap-2 mb-6 bg-white p-2 rounded-xl border border-gray-100 w-fit">
                         {[
-                            { id: 'active_users', label: 'Active Personnel', icon: Users },
-                            { id: 'patron_list', label: 'Patron List (Grant Access)', icon: UserCheck },
+                            { id: 'active_users', label: 'Team', icon: Users },
+                            { id: 'patron_list', label: 'Patron List', icon: UserCheck },
                             { id: 'announcements', label: 'Announcements', icon: Bell }
                         ].map(tab => (
                             <button
@@ -872,7 +872,10 @@ export default function AdminUserManagement() {
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
                                         {filteredUsers.map(user => (
-                                            <tr key={user.id} className="hover:bg-gray-50">
+                                            <tr
+                                                key={user.id}
+                                                className="hover:bg-gray-50 transition-colors"
+                                            >
                                                 <td className="px-6 py-4">
                                                     <div className="flex items-center gap-3">
                                                         <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden">
@@ -917,14 +920,14 @@ export default function AdminUserManagement() {
                                                     {user.role !== 'admin' && (
                                                         <div className="flex justify-end items-center gap-2">
                                                             <button
-                                                                onClick={() => handleToggleUserStatus(user)}
+                                                                onClick={(e) => { e.stopPropagation(); handleToggleUserStatus(user); }}
                                                                 className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${user.status === 'active' ? 'bg-green-500' : 'bg-gray-300'}`}
                                                                 title={user.status === 'active' ? 'Active — Click to deactivate' : 'Inactive — Click to activate'}
                                                             >
                                                                 <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${user.status === 'active' ? 'translate-x-[18px]' : 'translate-x-[2px]'}`} />
                                                             </button>
-                                                            <button onClick={() => handleEditUser(user)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit2 className="w-4 h-4" /></button>
-                                                            <button onClick={() => handleDeleteUser(user.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4" /></button>
+                                                            <button onClick={(e) => { e.stopPropagation(); handleEditUser(user); }} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit2 className="w-4 h-4" /></button>
+                                                            <button onClick={(e) => { e.stopPropagation(); handleDeleteUser(user.id); }} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 className="w-4 h-4" /></button>
                                                         </div>
                                                     )}
                                                 </td>
@@ -1337,6 +1340,8 @@ export default function AdminUserManagement() {
                     </div>
                 </div >
             </Modal >
+
+
 
             {/* Announcement Modal */}
             < Modal
