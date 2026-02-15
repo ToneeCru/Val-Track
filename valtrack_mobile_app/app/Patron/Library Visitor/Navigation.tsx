@@ -82,7 +82,7 @@ export default function Navigation({ activeTab = 'home', isOpen, onClose }: Navi
       else if (route === 'qr') router.push('/Patron/QR/UserQRCode');
       else if (route === 'capacity') router.push('/Patron/Area Capacity/FloorAreaCapacity');
       else if (route === 'analytics') router.push('/Patron/UserAnalytics/CheckInAnalytics');
-      else if (route === 'settings') router.push('/Patron/Settings/UserSettings');
+      else if (route === 'settings') router.push('/Patron/Settings/Profile&Settings');
     }, 200);
   };
 
@@ -128,7 +128,7 @@ export default function Navigation({ activeTab = 'home', isOpen, onClose }: Navi
           { transform: [{ translateX: slideAnim }] },
         ]}
       >
-        {/* Header: User Info & Close Button */}
+        {/* Header: User Info */}
         <View style={styles.header}>
           <View style={styles.userInfoRow}>
             <Image source={{ uri: defaultProfileImg }} style={styles.profileImg} />
@@ -137,10 +137,6 @@ export default function Navigation({ activeTab = 'home', isOpen, onClose }: Navi
               <Text style={styles.userRole}>Library User</Text>
             </View>
           </View>
-
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <MaterialCommunityIcons name="close" size={24} color="#fff" />
-          </TouchableOpacity>
         </View>
 
         {/* Navigation Items */}
@@ -263,11 +259,6 @@ const styles = StyleSheet.create({
   },
   userInfo: {
     flex: 1,
-  },
-  closeBtn: {
-    padding: 8,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 20,
   },
   userName: {
     color: '#fff',

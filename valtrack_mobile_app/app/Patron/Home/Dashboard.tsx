@@ -38,10 +38,10 @@ const SERVICES = [
 ];
 
 const BRANCHES = [
-  { id: 1, name: 'Valace Malinta', address: 'McArthur Highway, Malinta', status: 'High Traffic', distance: '1.2 km', image: 'https://via.placeholder.com/50' },
-  { id: 2, name: 'Valace Marulas', address: 'Marulas, Valenzuela', status: 'Open', distance: '4.5 km', image: 'https://via.placeholder.com/50' },
+  { id: 1, name: 'Valace Malinta', address: 'McArthur Highway, Malinta', status: 'Open', distance: '1.2 km', image: 'https://via.placeholder.com/50' },
+  { id: 2, name: 'Valace Marulas', address: 'Marulas, Valenzuela', status: 'Closed', distance: '4.5 km', image: 'https://via.placeholder.com/50' },
   { id: 3, name: 'Valace Gen. T. De Leon', address: 'Gen. T. De Leon', status: 'Open', distance: '12.5 km', image: 'https://via.placeholder.com/50' },
-  { id: 4, name: 'Valace Mapulang Lupa', address: 'Mapulang Lupa', status: 'Open', distance: '12.5 km', image: 'https://via.placeholder.com/50' }
+  { id: 4, name: 'Valace Mapulang Lupa', address: 'Mapulang Lupa', status: 'Closed', distance: '12.5 km', image: 'https://via.placeholder.com/50' }
 ];
 
 // --- Helper Functions for Calendar ---
@@ -203,8 +203,18 @@ function CalendarSection() {
       {/* Daily Events Section */}
       <View style={styles.eventsSection}>
         <View style={styles.eventsHeader}>
-          <ThemedText type="defaultSemiBold">Events for {MONTH_NAMES[selectedDate.getMonth()].substring(0, 3)} {selectedDate.getDate()}</ThemedText>
-          <ThemedText style={styles.eventCount}>{dailyEvents.length} activities</ThemedText>
+          <ThemedText
+            style={[
+              styles.eventsTitle,
+              { color: '#00104A', fontWeight: 'bold' }
+            ]}
+          >
+            Events for {MONTH_NAMES[selectedDate.getMonth()].substring(0, 3)} {selectedDate.getDate()}
+          </ThemedText>
+
+          <ThemedText style={styles.eventCount}>
+            {dailyEvents.length} activities
+          </ThemedText>
         </View>
 
         {dailyEvents.length > 0 ? (
@@ -261,7 +271,7 @@ function BranchesSection() {
     <View style={styles.sectionMarginTop}>
       <View style={styles.sectionHeaderStack}>
         <ThemedText type="title" style={styles.sectionTitle}>Current Branches</ThemedText>
-        <ThemedText style={styles.sectionSubtitle}>Find the nearest Val-Track center</ThemedText>
+        <ThemedText style={styles.sectionSubtitle}>Find the nearest Valenzuela City Library Branch</ThemedText>
       </View>
 
       <View style={styles.branchesCardContainer}>
@@ -344,8 +354,8 @@ export default function Dashboard() {
       >
         {/* Customized Greeting */}
         <View style={styles.greetingContainer}>
-          <ThemedText type="title">Hello, Alex</ThemedText>
-          <ThemedText style={styles.greetingSub}>Welcome to Val-Track App</ThemedText>
+          <ThemedText type="title" style={{ color: '#00104A', marginTop: 15 }}>Hello, Alex</ThemedText>
+          <ThemedText style={styles.greetingSub}>Welcome to Val-Track Mobile App</ThemedText>
         </View>
 
         <AnnouncementCard />
@@ -385,7 +395,7 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   greetingSub: {
-    color: '#00104A',
+    color: '#333',
     fontSize: 14,
   },
   sectionTitle: {

@@ -25,15 +25,12 @@ const { width } = Dimensions.get('window');
 
 // Logo image
 const valtrackLogo = require('../../assets/images/valtrackLogo2.png');
-// Placeholder profile image (replace with real user data later)
-const defaultProfileImg = 'https://via.placeholder.com/40';
 
 interface OverallHeaderProps {
   notificationCount?: number;
   onMenuPress?: () => void;
   onNotificationPress?: () => void;
   onQrPress?: () => void;
-  onProfilePress?: () => void;
 }
 
 export default function OverallHeader({
@@ -41,7 +38,6 @@ export default function OverallHeader({
   onMenuPress,
   onNotificationPress,
   onQrPress,
-  onProfilePress,
 }: OverallHeaderProps) {
   return (
     <View style={styles.headerContainer}>
@@ -89,21 +85,6 @@ export default function OverallHeader({
             </View>
           )}
         </TouchableOpacity>
-
-        {/* Profile Icon */}
-        <TouchableOpacity
-          style={styles.profileButton}
-          onPress={onProfilePress}
-          activeOpacity={0.7}
-        >
-          <View style={styles.profileImageContainer}>
-            <Image
-              source={{ uri: defaultProfileImg }}
-              style={styles.profileImage}
-            />
-            <View style={styles.onlineIndicator} />
-          </View>
-        </TouchableOpacity>
       </View>
     </View>
   );
@@ -140,7 +121,7 @@ const styles = StyleSheet.create({
   rightSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12, // Increased gap slightly for better touch targets
   },
   iconButton: {
     padding: 8,
@@ -163,28 +144,5 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: 'bold',
     color: '#fff',
-  },
-  profileButton: {
-    marginLeft: 4,
-  },
-  profileImageContainer: {
-    position: 'relative',
-  },
-  profileImage: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#ddd',
-  },
-  onlineIndicator: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#10B981', // Green
-    borderWidth: 1.5,
-    borderColor: '#fff',
   },
 });
