@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Topbar from '../components/Topbar';
 import StatCard from '../components/Statcard';
+import BranchSelector from '../components/BranchSelector';
 import { supabase } from '../lib/supabase';
 import { useBranch } from '../context/BranchContext';
 import {
@@ -46,30 +47,36 @@ export default function AdminDashboard() {
     }, [navigate]);
 
     useEffect(() => {
-        if (branch?.id) {
-            fetchDashboardData();
-        }
+        fetchDashboardData();
     }, [branch]);
 
     const fetchDashboardData = async () => {
         setIsLoading(true);
         try {
-            // 1. Fetch Floors for this Branch
-            const { data: floors } = await supabase
+            // 1. Fetch Floors
+            let floorQuery = supabase
                 .from('floors')
-                .select('id, floor_number, label')
-                .eq('branch_id', branch.id);
+                .select('id, floor_number, label, branch_id');
 
+            if (branch?.id) {
+                floorQuery = floorQuery.eq('branch_id', branch.id);
+            }
+
+            const { data: floors } = await floorQuery;
             const floorIds = floors?.map(f => f.id) || [];
 
-            // 2. Fetch Areas for these floors
-            const { data: areasData } = await supabase
-                .from('areas')
-                .select('*')
-                .in('floor_id', floorIds)
-                .order('name');
+            // 2. Fetch Areas
+            let areasData = [];
+            if (floorIds.length > 0) {
+                const { data } = await supabase
+                    .from('areas')
+                    .select('*')
+                    .in('floor_id', floorIds)
+                    .order('name');
+                areasData = data || [];
+            }
 
-            const areaIds = areasData?.map(a => a.id) || [];
+            const areaIds = areasData.map(a => a.id);
 
             // 3. Current Attendance (Active only)
             let activeAttendance = 0;
@@ -106,12 +113,17 @@ export default function AdminDashboard() {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
 
-            const { count: dailyScans } = await supabase
+            let logsQuery = supabase
                 .from('audit_logs')
                 .select('*', { count: 'exact', head: true })
-                .eq('branch_id', branch.id)
                 .gte('timestamp', today.toISOString())
                 .or('action.ilike.%Check-In%,action.ilike.%Check-Out%');
+
+            if (branch?.id) {
+                logsQuery = logsQuery.eq('branch_id', branch.id);
+            }
+
+            const { count: dailyScans } = await logsQuery;
 
             // 5. Active Baggage
             let activeBaggageCount = 0;
@@ -125,15 +137,16 @@ export default function AdminDashboard() {
             }
 
             // 6. Open Incidents
-            const { count: openIncidents } = await supabase
+            let incidentQuery = supabase
                 .from('incidents')
                 .select('*', { count: 'exact', head: true })
-                .eq('branch_id', branch.id)
                 .eq('status', 'open');
 
-            // 7. Recent Activity (Removed from UI but keep data fetch if needed or remove it)
-            // Keeping it simple: remove data fetch for recentLogs if not used.
-            // Actually, if we remove it from UI, we don't need to fetch it.
+            if (branch?.id) {
+                incidentQuery = incidentQuery.eq('branch_id', branch.id);
+            }
+
+            const { count: openIncidents } = await incidentQuery;
 
             setStats({
                 totalPatrons: activeAttendance,
@@ -161,15 +174,22 @@ export default function AdminDashboard() {
             <Sidebar role="admin" />
 
             <div className="ml-64">
-                <Topbar title="Dashboard" subtitle={branch ? `${branch.name} Overview` : 'Select a Branch'} />
+                <Topbar
+                    title="Dashboard"
+                    subtitle={branch ? `${branch.name} Overview` : 'All Branches Overview'}
+                />
+
+                <div className="px-8 pt-6">
+                    <div className="flex justify-end">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-500 font-medium">Viewing Data For:</span>
+                            <BranchSelector />
+                        </div>
+                    </div>
+                </div>
 
                 <main className="p-8">
-                    {!branch ? (
-                        <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border border-dashed border-gray-300">
-                            <Layout className="w-12 h-12 text-gray-300 mb-4" />
-                            <p className="text-gray-500 font-medium">Please select a branch to view statistics.</p>
-                        </div>
-                    ) : isLoading ? (
+                    {isLoading ? (
                         <div className="flex justify-center items-center h-64">
                             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
                         </div>
@@ -205,7 +225,7 @@ export default function AdminDashboard() {
                                 />
                             </div>
 
-                            {/* Area Statistics (was Floor Statistics) */}
+                            {/* Area Statistics */}
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
                                 {stats.areaStats?.map((area) => (
                                     <div key={area.id} className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
@@ -265,12 +285,12 @@ export default function AdminDashboard() {
                                 ))}
                                 {(!stats.areaStats || stats.areaStats.length === 0) && (
                                     <div className="col-span-full py-8 text-center text-gray-400 bg-white rounded-xl border border-gray-100 border-dashed">
-                                        No areas found for this branch.
+                                        No areas found.
                                     </div>
                                 )}
                             </div>
 
-                            {/* Top Busy Areas (Lite Version) - Single Block since Recent Activity is removed */}
+                            {/* Top Busy Areas */}
                             <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm flex flex-col">
                                 <div className="flex justify-between items-center mb-4">
                                     <div>
@@ -297,8 +317,8 @@ export default function AdminDashboard() {
                                                                 <p className="text-xs text-gray-500 mt-1">{area.current} / {area.capacity}</p>
                                                             </div>
                                                             <span className={`text-xs font-bold px-2 py-1 rounded-full ${occupancyRate > 80 ? 'bg-red-100 text-red-600' :
-                                                                    occupancyRate > 50 ? 'bg-yellow-100 text-yellow-600' :
-                                                                        'bg-green-100 text-green-600'
+                                                                occupancyRate > 50 ? 'bg-yellow-100 text-yellow-600' :
+                                                                    'bg-green-100 text-green-600'
                                                                 }`}>
                                                                 {Math.round(occupancyRate)}%
                                                             </span>
@@ -306,8 +326,8 @@ export default function AdminDashboard() {
                                                         <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2">
                                                             <div
                                                                 className={`h-1.5 rounded-full ${occupancyRate > 80 ? 'bg-red-500' :
-                                                                        occupancyRate > 50 ? 'bg-yellow-500' :
-                                                                            'bg-green-500'
+                                                                    occupancyRate > 50 ? 'bg-yellow-500' :
+                                                                        'bg-green-500'
                                                                     }`}
                                                                 style={{ width: `${Math.min(occupancyRate, 100)}%` }}
                                                             ></div>

@@ -5,6 +5,7 @@ import AdminBaggageManagement from './pages/AdminBaggageManagement'; // Renamed
 import AdminBaggageLogs from './pages/AdminBaggageLogs'; // Added
 import AdminBranchManagement from './pages/AdminBranchManagement'; // Added for CRUD branches
 import AdminAreaManagement from './pages/AdminAreaManagement'; // Renamed
+import AdminActiveBaggage from './pages/AdminActiveBaggage'; // Added
 import AdminReports from './pages/AdminReports';
 import AdminAuditLogs from './pages/AdminAuditLogs';
 import StaffDashboard from './pages/StaffDashboard';
@@ -27,6 +28,7 @@ export const PAGES = {
     "AdminBaggageLogs": AdminBaggageLogs, // Added
     "AdminBranchManagement": AdminBranchManagement, // Added
     "AdminAreaManagement": AdminAreaManagement, // Renamed key
+    "AdminActiveBaggage": AdminActiveBaggage, // Added
     "AdminReports": AdminReports,
     "AdminAuditLogs": AdminAuditLogs,
     "StaffDashboard": StaffDashboard,

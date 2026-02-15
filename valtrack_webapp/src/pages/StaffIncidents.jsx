@@ -66,11 +66,11 @@ export default function StaffIncidents() {
 
     // Fetch data when branch changes
     useEffect(() => {
-        if (selectedBranch?.id) {
+        if (selectedBranch?.id && session) {
             fetchIncidents();
             fetchAreas();
         }
-    }, [selectedBranch]);
+    }, [selectedBranch, session]);
 
     // Fetch active patrons when modal opens
     useEffect(() => {
@@ -82,11 +82,16 @@ export default function StaffIncidents() {
     const fetchIncidents = async () => {
         setIsLoading(true);
         try {
-            const { data, error } = await supabase
+            let query = supabase
                 .from('incidents')
                 .select('*')
-                .eq('branch_id', selectedBranch.id)
-                .order('created_at', { ascending: false });
+                .eq('branch_id', selectedBranch.id);
+
+            if (session.assigned_area_id) {
+                query = query.eq('area_id', session.assigned_area_id);
+            }
+
+            const { data, error } = await query.order('created_at', { ascending: false });
 
             if (error) throw error;
             setIncidents(data || []);
@@ -100,19 +105,25 @@ export default function StaffIncidents() {
 
     const fetchAreas = async () => {
         try {
-            const { data: floors } = await supabase.from('floors').select('id').eq('branch_id', selectedBranch.id);
-            const floorIds = floors?.map(f => f.id) || [];
+            let areaQuery = supabase.from('areas').select('*, floors(label, floor_number)');
 
-            if (floorIds.length > 0) {
-                const { data: areaData } = await supabase
-                    .from('areas')
-                    .select('*, floors(label, floor_number)')
-                    .in('floor_id', floorIds)
-                    .order('name');
-                setAreas(areaData || []);
+            if (session.assigned_area_id) {
+                areaQuery = areaQuery.eq('id', session.assigned_area_id);
+            } else if (session.assigned_floor_id) {
+                areaQuery = areaQuery.eq('floor_id', session.assigned_floor_id);
             } else {
-                setAreas([]);
+                const { data: floors } = await supabase.from('floors').select('id').eq('branch_id', selectedBranch.id);
+                const floorIds = floors?.map(f => f.id) || [];
+                if (floorIds.length > 0) {
+                    areaQuery = areaQuery.in('floor_id', floorIds);
+                } else {
+                    setAreas([]);
+                    return;
+                }
             }
+
+            const { data: areaData } = await areaQuery.order('name');
+            setAreas(areaData || []);
         } catch (error) {
             console.error("Error fetching areas", error);
         }
@@ -189,6 +200,7 @@ export default function StaffIncidents() {
                 reported_by: session.name || session.username,
                 created_at: new Date().toISOString(),
                 branch_id: selectedBranch.id,
+                area_id: formData.area_id || null, // Ensure area_id is saved
                 // If the table expects 'floor' (int), we might just pass 1 or selectedArea floor_number
                 floor: selectedAreaObj?.floors?.floor_number || 1
             };

@@ -41,27 +41,37 @@ export default function VolunteerActiveBaggage() {
 
   // Fetch Areas and Baggage when branch changes
   useEffect(() => {
-    if (selectedBranch?.id) {
+    if (selectedBranch?.id && session) {
       fetchData();
     }
-  }, [selectedBranch]);
+  }, [selectedBranch, session]);
 
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      // 1. Fetch Areas for filtering and mapping
-      const { data: floors } = await supabase.from('floors').select('id').eq('branch_id', selectedBranch.id);
-      const floorIds = floors?.map(f => f.id) || [];
+      // 1. Fetch Areas
+      let areaQuery = supabase.from('areas').select('*, floors(label, floor_number)');
 
-      let branchAreas = [];
-      if (floorIds.length > 0) {
-        const { data: areaData } = await supabase
-          .from('areas')
-          .select('*, floors(label, floor_number)')
-          .in('floor_id', floorIds)
-          .order('name');
-        branchAreas = areaData || [];
+      if (session.assigned_area_id) {
+        areaQuery = areaQuery.eq('id', session.assigned_area_id);
+        setFilterArea(session.assigned_area_id);
+      } else if (session.assigned_floor_id) {
+        areaQuery = areaQuery.eq('floor_id', session.assigned_floor_id);
+      } else {
+        const { data: floors } = await supabase.from('floors').select('id').eq('branch_id', selectedBranch.id);
+        const floorIds = floors?.map(f => f.id) || [];
+        if (floorIds.length > 0) {
+          areaQuery = areaQuery.in('floor_id', floorIds);
+        } else {
+          setAreas([]);
+          setActiveBaggage([]);
+          setIsLoading(false);
+          return;
+        }
       }
+
+      const { data: areaData } = await areaQuery.order('name');
+      const branchAreas = areaData || [];
       setAreas(branchAreas);
 
       // 2. Fetch Active Baggage for ALL areas in branch
@@ -149,19 +159,7 @@ export default function VolunteerActiveBaggage() {
                 />
               </div>
 
-              <div className="relative">
-                <select
-                  value={filterArea}
-                  onChange={(e) => setFilterArea(e.target.value)}
-                  className="appearance-none px-4 py-2 pr-8 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#56CBF9] bg-white cursor-pointer"
-                >
-                  <option value="all">All Areas</option>
-                  {areas.map(area => (
-                    <option key={area.id} value={area.id}>{area.name}</option>
-                  ))}
-                </select>
-                <Filter className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
+
             </div>
           </div>
 

@@ -8,14 +8,14 @@ import {
     Search,
     MapPin,
     Clock,
-    Building2,
     Filter
 } from 'lucide-react';
 import { useBranch } from '../context/BranchContext';
 import { supabase } from '../lib/supabase';
 import { toast } from 'sonner';
+import BranchSelector from '../components/BranchSelector';
 
-export default function StaffActiveBaggage() {
+export default function AdminActiveBaggage() {
     const navigate = useNavigate();
     const { selectedBranch } = useBranch();
     const [session, setSession] = useState(null);
@@ -33,50 +33,54 @@ export default function StaffActiveBaggage() {
             return;
         }
         const parsed = JSON.parse(sessionData);
-        if (parsed.role !== 'staff') {
+        if (parsed.role !== 'admin') {
             navigate('/Home');
             return;
         }
         setSession(parsed);
     }, [navigate]);
 
-    // Fetch Areas and Baggage when branch changes
+    // Fetch Areas and Baggage when branch changes (or is cleared to All)
     useEffect(() => {
-        if (selectedBranch?.id && session) {
-            fetchData();
-        }
-    }, [selectedBranch, session]);
+        fetchData();
+    }, [selectedBranch]);
 
     const fetchData = async () => {
         setIsLoading(true);
         try {
-            // 1. Fetch Areas
-            let areaQuery = supabase.from('areas').select('*, floors(label, floor_number)');
+            // 1. Fetch Floors based on selection (or all if null)
+            let floorQuery = supabase
+                .from('floors')
+                .select('id, branch_id');
 
-            if (session.assigned_area_id) {
-                areaQuery = areaQuery.eq('id', session.assigned_area_id);
-                // Also force filter
-                setFilterArea(session.assigned_area_id);
-            } else if (session.assigned_floor_id) {
-                areaQuery = areaQuery.eq('floor_id', session.assigned_floor_id);
-            } else {
-                const { data: floors } = await supabase.from('floors').select('id').eq('branch_id', selectedBranch.id);
-                const floorIds = floors?.map(f => f.id) || [];
-                if (floorIds.length > 0) {
-                    areaQuery = areaQuery.in('floor_id', floorIds);
-                } else {
-                    setAreas([]);
-                    setActiveBaggage([]);
-                    setIsLoading(false);
-                    return;
-                }
+            if (selectedBranch?.id) {
+                floorQuery = floorQuery.eq('branch_id', selectedBranch.id);
             }
 
-            const { data: areaData } = await areaQuery.order('name');
+            const { data: floors, error: floorError } = await floorQuery;
+            if (floorError) throw floorError;
+            const floorIds = floors.map(f => f.id);
+
+            if (floorIds.length === 0) {
+                setAreas([]);
+                setActiveBaggage([]);
+                setIsLoading(false);
+                return;
+            }
+
+            // 2. Fetch Areas in those floors
+            const { data: areaData, error: areaError } = await supabase
+                .from('areas')
+                .select('*, floors(label, floor_number, branch_id)')
+                .in('floor_id', floorIds)
+                .order('name');
+
+            if (areaError) throw areaError;
+
             const branchAreas = areaData || [];
             setAreas(branchAreas);
 
-            // 2. Fetch Active Baggage for ALL areas in branch
+            // 3. Fetch Active Baggage for these areas
             const areaIds = branchAreas.map(a => a.id);
             if (areaIds.length > 0) {
                 const { data: baggageData, error } = await supabase
@@ -88,9 +92,6 @@ export default function StaffActiveBaggage() {
 
                 if (error) throw error;
 
-                // Enrich baggage data with area info manually or via join if we used join in query
-                // (Supabase join notation: select('*, areas(*)') )
-                // Let's just map it since we have areas list
                 const enriched = baggageData.map(b => {
                     const area = branchAreas.find(a => a.id === b.area_id);
                     return { ...b, area };
@@ -103,7 +104,7 @@ export default function StaffActiveBaggage() {
 
         } catch (error) {
             console.error('Error fetching data:', error);
-            // toast.error('Failed to load active baggage');
+            toast.error('Failed to load active baggage');
         } finally {
             setIsLoading(false);
         }
@@ -115,14 +116,16 @@ export default function StaffActiveBaggage() {
             (item.patron_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
             (item.id || '').toLowerCase().includes(searchTerm.toLowerCase());
         const matchesArea = filterArea === 'all' || item.area_id === filterArea;
+        // In "All Branches" mode, areas from different branches will be in the list.
+        // The filterArea dropdown will contain all areas from all branches if selectedBranch is null.
         return matchesSearch && matchesArea;
     });
 
     const handleDownload = () => {
         const csvContent = [
-            'Locker ID,Patron Name,Patron ID,Area,Floor,Check-In Time',
+            'Locker ID,Patron Name,Patron ID,Area,Floor,Branch,Check-In Time',
             ...filteredBaggage.map(item =>
-                `${item.id},"${item.patron_name}",${item.patron_id},"${item.area?.name || 'Unknown'}",${item.area?.floors?.label || item.area?.floors?.floor_number || ''},${new Date(item.check_in_time).toLocaleString()}`
+                `${item.id},"${item.patron_name}",${item.patron_id},"${item.area?.name || 'Unknown'}",${item.area?.floors?.label || item.area?.floors?.floor_number || ''},${selectedBranch?.name || 'All'},${new Date(item.check_in_time).toLocaleString()}`
             )
         ].join('\n');
 
@@ -130,7 +133,7 @@ export default function StaffActiveBaggage() {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `active-baggage-${selectedBranch?.name || 'branch'}-${new Date().toISOString().split('T')[0]}.csv`;
+        a.download = `active-baggage-${selectedBranch?.name || 'all-branches'}-${new Date().toISOString().split('T')[0]}.csv`;
         a.click();
         window.URL.revokeObjectURL(url);
     };
@@ -139,10 +142,19 @@ export default function StaffActiveBaggage() {
 
     return (
         <div className="min-h-screen" style={{ backgroundColor: '#F8FAFC' }}>
-            <Sidebar role="staff" />
+            <Sidebar role="admin" />
 
             <div className="ml-64">
-                <Topbar title="Active Baggage List" subtitle={`Currently stored items in ${selectedBranch?.name || '...'}`} />
+                <Topbar title="All Active Baggage" subtitle={`Monitoring all stored items in ${selectedBranch?.name || 'All Branches'}`} />
+
+                <div className="px-8 pt-6">
+                    <div className="flex justify-end">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-500 font-medium">Viewing Data For:</span>
+                            <BranchSelector />
+                        </div>
+                    </div>
+                </div>
 
                 <main className="p-8">
                     {/* Stats */}
@@ -157,8 +169,6 @@ export default function StaffActiveBaggage() {
                             </div>
                         </div>
 
-                        {/* Optional: Break down by Area if few areas, else just total */}
-                        {/* Let's show filtered count */}
                         <div className="bg-white rounded-xl p-6 border border-gray-100 flex items-center justify-between col-span-2">
                             <div>
                                 <div className="flex items-center gap-2 mb-2">
@@ -183,6 +193,23 @@ export default function StaffActiveBaggage() {
                                     className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#56CBF9] transition-all"
                                 />
                             </div>
+
+                            <div className="relative">
+                                <select
+                                    value={filterArea}
+                                    onChange={(e) => setFilterArea(e.target.value)}
+                                    className="appearance-none px-4 py-2 pr-8 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#56CBF9] bg-white cursor-pointer"
+                                >
+                                    <option value="all">All Areas</option>
+                                    {areas.map(area => (
+                                        <option key={area.id} value={area.id}>
+                                            {area.name}
+                                            {!selectedBranch ? ` (${area.floors?.floor_number})` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                <Filter className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                            </div>
                         </div>
 
                         <button
@@ -194,7 +221,6 @@ export default function StaffActiveBaggage() {
                             Download CSV
                         </button>
                     </div>
-
 
                     {/* Baggage Table */}
                     <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">

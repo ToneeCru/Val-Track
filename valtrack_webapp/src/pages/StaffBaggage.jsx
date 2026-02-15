@@ -49,11 +49,11 @@ export default function StaffBaggage() {
 
     // Fetch Areas when branch changes
     useEffect(() => {
-        if (selectedBranch?.id) {
+        if (selectedBranch?.id && session) {
             fetchAreas();
             fetchHistory();
         }
-    }, [selectedBranch]);
+    }, [selectedBranch, session]);
 
     // Fetch Data when Area changes
     useEffect(() => {
@@ -67,22 +67,36 @@ export default function StaffBaggage() {
 
     const fetchAreas = async () => {
         try {
-            const { data: floors } = await supabase.from('floors').select('id').eq('branch_id', selectedBranch.id);
-            const floorIds = floors?.map(f => f.id) || [];
+            let areaQuery = supabase.from('areas').select('*, floors(label, floor_number)');
 
-            if (floorIds.length > 0) {
-                const { data: areaData } = await supabase
-                    .from('areas')
-                    .select('*, floors(label, floor_number)')
-                    .in('floor_id', floorIds)
-                    .order('name');
+            if (session.assigned_area_id) {
+                areaQuery = areaQuery.eq('id', session.assigned_area_id);
+            } else if (session.assigned_floor_id) {
+                areaQuery = areaQuery.eq('floor_id', session.assigned_floor_id);
+            } else {
+                const { data: floors } = await supabase.from('floors').select('id').eq('branch_id', selectedBranch.id);
+                const floorIds = floors?.map(f => f.id) || [];
+                if (floorIds.length > 0) {
+                    areaQuery = areaQuery.in('floor_id', floorIds);
+                } else {
+                    setAreas([]);
+                    return;
+                }
+            }
 
-                setAreas(areaData || []);
-                if (areaData?.length > 0 && !selectedArea) {
+            const { data: areaData } = await areaQuery.order('name');
+            setAreas(areaData || []);
+
+            // Auto-select logic
+            if (areaData?.length > 0) {
+                if (session.assigned_area_id) {
+                    // Force select assigned area
+                    if (selectedArea?.id !== session.assigned_area_id) {
+                        setSelectedArea(areaData[0]);
+                    }
+                } else if (!selectedArea) {
                     setSelectedArea(areaData[0]);
                 }
-            } else {
-                setAreas([]);
             }
         } catch (error) {
             console.error("Error fetching areas", error);
@@ -258,33 +272,15 @@ export default function StaffBaggage() {
                     {/* Area Selection & Stats */}
                     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
                         {/* Area Selector */}
-                        <div className="bg-white rounded-xl p-6 border border-gray-100 flex flex-col h-full max-h-[300px]">
-                            <h3 className="font-semibold mb-4 flex items-center gap-2" style={{ color: '#232323' }}>
-                                <MapPin className="w-5 h-5 text-blue-600" /> Select Area
+                        {/* Current Area Display */}
+                        <div className="bg-white rounded-xl p-6 border border-gray-100 flex flex-col justify-center h-full">
+                            <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-gray-500 uppercase tracking-wider">
+                                <MapPin className="w-4 h-4 text-blue-500" /> Current Area
                             </h3>
-                            <div className="space-y-2 overflow-y-auto custom-scrollbar flex-1">
-                                {areas.length > 0 ? areas.map((area) => (
-                                    <button
-                                        key={area.id}
-                                        onClick={() => setSelectedArea(area)}
-                                        className={`w-full px-4 py-3 rounded-lg text-left transition-all ${selectedArea?.id === area.id
-                                            ? 'bg-[#00104A] text-white shadow-md'
-                                            : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
-                                            }`}
-                                    >
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <span className="font-medium block">{area.name}</span>
-                                                <span className={`text-xs ${selectedArea?.id === area.id ? 'text-blue-200' : 'text-gray-400'}`}>
-                                                    {area.floors?.label || `Floor ${area.floors?.floor_number}`}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </button>
-                                )) : (
-                                    <div className="text-gray-400 italic text-sm text-center py-8">No areas found</div>
-                                )}
-                            </div>
+                            <p className="text-2xl font-bold text-gray-900">{selectedArea?.name || 'Loading...'}</p>
+                            <span className="text-sm text-gray-400 mt-1">
+                                {selectedArea?.floors?.label || (selectedArea ? `Floor ${selectedArea.floors?.floor_number}` : '')}
+                            </span>
                         </div>
 
                         {/* Stats */}
@@ -319,17 +315,17 @@ export default function StaffBaggage() {
                             {/* Scan Result */}
                             {scanResult && (
                                 <div className={`mb-8 p-6 rounded-xl border-l-4 shadow-sm animate-in fade-in slide-in-from-top-4 duration-300 ${scanResult.type === 'error' ? 'bg-red-50 border-red-500' :
-                                        scanResult.type === 'checkout' ? 'bg-blue-50 border-blue-500' : 'bg-green-50 border-green-500'
+                                    scanResult.type === 'checkout' ? 'bg-blue-50 border-blue-500' : 'bg-green-50 border-green-500'
                                     }`}>
                                     <div className="flex items-center gap-4">
                                         <div className={`w-12 h-12 rounded-full flex items-center justify-center ${scanResult.type === 'error' ? 'bg-red-100 text-red-600' :
-                                                scanResult.type === 'checkout' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'
+                                            scanResult.type === 'checkout' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'
                                             }`}>
                                             {scanResult.type === 'error' ? <AlertCircle className="w-6 h-6" /> : <Package className="w-6 h-6" />}
                                         </div>
                                         <div>
                                             <h4 className={`font-bold text-lg ${scanResult.type === 'error' ? 'text-red-900' :
-                                                    scanResult.type === 'checkout' ? 'text-blue-900' : 'text-green-900'
+                                                scanResult.type === 'checkout' ? 'text-blue-900' : 'text-green-900'
                                                 }`}>{scanResult.message}</h4>
                                             <p className="text-sm opacity-80">
                                                 {scanResult.patron.name} • Locker: {scanResult.slot || 'N/A'}

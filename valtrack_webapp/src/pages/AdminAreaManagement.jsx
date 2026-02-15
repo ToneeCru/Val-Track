@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Topbar from '../components/Topbar';
 import Modal from '../components/Modal';
+import BranchSelector from '../components/BranchSelector';
 import { supabase } from '../lib/supabase';
 import { useBranch } from '../context/BranchContext';
 import { toast } from 'sonner';
@@ -16,8 +17,8 @@ import {
     ArrowUpRight,
     MapPin,
     Layers,
-    Save, // Added Save icon
-    X     // Added X icon
+    Save,
+    X
 } from 'lucide-react';
 
 export default function AdminFloorCapacity() {
@@ -73,6 +74,7 @@ export default function AdminFloorCapacity() {
         } else {
             setFloors([]);
             setAreas([]);
+            setSelectedFloorId(null);
         }
     }, [branch]);
 
@@ -306,11 +308,20 @@ export default function AdminFloorCapacity() {
                     subtitle={branch ? `${branch.name} - ${floors.find(f => f.id === selectedFloorId)?.label || 'No Floor Selected'}` : 'Select a Branch'}
                 />
 
+                <div className="px-8 pt-6">
+                    <div className="flex justify-end">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-500 font-medium">Viewing Data For:</span>
+                            <BranchSelector />
+                        </div>
+                    </div>
+                </div>
+
                 <main className="p-8">
                     {!branch ? (
                         <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border border-dashed border-gray-300">
                             <Layout className="w-12 h-12 text-gray-300 mb-4" />
-                            <p className="text-gray-500 font-medium">Please select a branch from the sidebar to manage areas.</p>
+                            <p className="text-gray-500 font-medium">Please select a specific branch using the selector above to manage its areas.</p>
                         </div>
                     ) : (
                         <>
@@ -342,7 +353,7 @@ export default function AdminFloorCapacity() {
                                         </button>
                                     ))}
                                     {floors.length === 0 && !isLoading && (
-                                        <div className="text-sm text-gray-500 italic px-2">No floors found.</div>
+                                        <div className="text-sm text-gray-500 italic px-2">No floors found for this branch.</div>
                                     )}
                                 </div>
                             </div>

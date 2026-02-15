@@ -45,31 +45,33 @@ const AuthenticatedApp = () => {
 
     // Render the main app with transitions
     return (
-        <AnimatePresence mode="wait">
-            <Routes location={location} key={location.pathname}>
-                <Route path="/" element={
-                    <LayoutWrapper currentPageName={mainPageKey}>
-                        <PageTransition>
+        <Routes location={location}>
+            <Route path="/" element={
+                <LayoutWrapper currentPageName={mainPageKey}>
+                    <AnimatePresence mode="wait">
+                        <PageTransition key={mainPageKey}>
                             <MainPage />
                         </PageTransition>
-                    </LayoutWrapper>
-                } />
-                {Object.entries(Pages).map(([path, Page]) => (
-                    <Route
-                        key={path}
-                        path={`/${path}`}
-                        element={
-                            <LayoutWrapper currentPageName={path}>
-                                <PageTransition>
+                    </AnimatePresence>
+                </LayoutWrapper>
+            } />
+            {Object.entries(Pages).map(([path, Page]) => (
+                <Route
+                    key={path}
+                    path={`/${path}`}
+                    element={
+                        <LayoutWrapper currentPageName={path}>
+                            <AnimatePresence mode="wait">
+                                <PageTransition key={path}>
                                     <Page />
                                 </PageTransition>
-                            </LayoutWrapper>
-                        }
-                    />
-                ))}
-                <Route path="*" element={<PageNotFound />} />
-            </Routes>
-        </AnimatePresence>
+                            </AnimatePresence>
+                        </LayoutWrapper>
+                    }
+                />
+            ))}
+            <Route path="*" element={<PageNotFound />} />
+        </Routes>
     );
 };
 

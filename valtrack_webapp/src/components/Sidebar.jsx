@@ -26,6 +26,7 @@ const adminMenuItems = [
     { key: 'dashboard', path: '/AdminDashboard', label: 'Dashboard', icon: LayoutDashboard },
     { key: 'user_management', path: '/AdminUserManagement', label: 'User Management', icon: Users },
     { key: 'baggage', path: '/AdminBaggageManagement', label: 'Baggage Management', icon: Package },
+    { key: 'admin_active_baggage', path: '/AdminActiveBaggage', label: 'Active Baggage', icon: Package },
     { key: 'baggage_logs', path: '/AdminBaggageLogs', label: 'Baggage Logs', icon: History },
     { key: 'branch_management', path: '/AdminBranchManagement', label: 'Branch Management', icon: Building2 },
     { key: 'area_management', path: '/AdminAreaManagement', label: 'Area Management', icon: Map },
@@ -136,59 +137,36 @@ export default function Sidebar({ role }) {
                 </div>
 
                 {/* User Profile */}
-                <div className="px-4 py-4 border-b border-white/10">
-                    <button onClick={() => setIsProfileModalOpen(true)} className="flex items-center gap-3 px-2 w-full hover:bg-white/5 rounded-xl transition-all p-2 text-left group border border-transparent hover:border-white/5">
+                <div className={`px-4 py-4 border-b border-white/10`}>
+                    <div
+                        onClick={() => role === 'admin' && setIsProfileModalOpen(true)}
+                        className={`flex items-center gap-3 px-2 w-full rounded-xl transition-all p-2 text-left border border-transparent ${role === 'admin' ? 'hover:bg-white/5 hover:border-white/5 cursor-pointer group' : ''}`}
+                    >
                         <div className="relative">
-                            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm overflow-hidden border-2 border-white/10 group-hover:border-[#56CBF9]/50 transition-colors" style={{ backgroundColor: 'rgba(86, 203, 249, 0.1)' }}>
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm overflow-hidden border-2 border-white/10 transition-colors ${role === 'admin' ? 'group-hover:border-[#56CBF9]/50' : ''}`} style={{ backgroundColor: 'rgba(86, 203, 249, 0.1)' }}>
                                 {userDisplay.avatar_url ? <img src={userDisplay.avatar_url} className="w-full h-full object-cover" /> : (userDisplay.name || userDisplay.full_name)?.charAt(0) || 'U'}
                             </div>
                             <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-[#00104A]"></div>
                         </div>
                         <div className="flex-1 min-w-0">
-                            <p className="text-white text-sm font-medium truncate group-hover:text-[#56CBF9] transition-colors">{userDisplay.name || userDisplay.full_name}</p>
-                            <p className="text-xs truncate text-gray-400 group-hover:text-gray-300 transition-colors">{roleLabel}</p>
+                            <p className={`text-white text-sm font-medium truncate transition-colors ${role === 'admin' ? 'group-hover:text-[#56CBF9]' : ''}`}>{userDisplay.name || userDisplay.full_name}</p>
+                            <p className={`text-xs truncate text-gray-400 transition-colors ${role === 'admin' ? 'group-hover:text-gray-300' : ''}`}>{roleLabel}</p>
                         </div>
-                        <ChevronRight className="w-4 h-4 text-gray-500 group-hover:text-[#56CBF9] transition-colors" />
-                    </button>
+                        {role === 'admin' && <ChevronRight className="w-4 h-4 text-gray-500 group-hover:text-[#56CBF9] transition-colors" />}
+                    </div>
 
                     {/* Assignment Scope Badge (Non-Admin) */}
-                    {role !== 'admin' && userDisplay.assigned_branch_id && (
+                    {role !== 'admin' && selectedBranch && (
                         <div className="mt-2 px-2">
-                            <div className="flex items-center gap-1.5 text-[10px] text-blue-200 bg-blue-900/30 px-2 py-1 rounded border border-blue-500/20">
-                                <Building2 className="w-3 h-3" />
-                                <span className="truncate">Assigned to Branch {/** Name would require fetch or context. For now usually explicit branch context handles display if selected. Use generic "Assigned" or rely on context */}</span>
+                            <div className="flex items-center gap-1.5 text-[10px] text-blue-200 bg-blue-900/30 px-2 py-1.5 rounded border border-blue-500/20">
+                                <Building2 className="w-3 h-3 flex-shrink-0" />
+                                <span className="truncate font-medium">Assigned to: {selectedBranch.name}</span>
                             </div>
                         </div>
                     )}
                 </div>
 
-                {/* Admin Branch Selector */}
-                {role === 'admin' && (
-                    <div className="px-4 py-3 border-b border-white/10">
-                        <label className="text-[10px] uppercase font-bold text-gray-400 mb-2 block tracking-wider px-1">Current Branch</label>
-                        <div className="relative" ref={dropdownRef}>
-                            <button onClick={() => setIsBranchDropdownOpen(!isBranchDropdownOpen)} className="w-full bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-lg text-white text-sm px-3 py-2.5 flex items-center justify-between transition-all group">
-                                <span className="flex items-center gap-2 truncate">
-                                    <Building2 className="w-4 h-4 text-[#56CBF9] opacity-70 group-hover:opacity-100" />
-                                    <span className="truncate">{loadingBranches ? 'Loading...' : (selectedBranch?.name || 'Select Branch')}</span>
-                                </span>
-                                <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isBranchDropdownOpen ? 'rotate-180' : ''}`} />
-                            </button>
-                            {isBranchDropdownOpen && (
-                                <div className="absolute top-full left-0 right-0 mt-1 bg-[#0f1c4d] border border-white/10 rounded-lg shadow-xl z-50 overflow-hidden max-h-60 overflow-y-auto custom-scrollbar">
-                                    <div className="py-1">
-                                        {branches.map(branch => (
-                                            <button key={branch.id} onClick={() => handleBranchSelect(branch.id)} className={`w-full text-left px-3 py-2.5 text-sm flex items-center justify-between hover:bg-white/5 transition-colors ${selectedBranch?.id === branch.id ? 'text-[#56CBF9] bg-white/5' : 'text-gray-300'}`}>
-                                                <span className="truncate pr-2">{branch.name}</span>
-                                                {selectedBranch?.id === branch.id && <Check className="w-3.5 h-3.5 flex-shrink-0" />}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
+
 
                 {/* Navigation */}
                 <nav className="flex-1 overflow-y-auto py-4 px-3 custom-scrollbar">

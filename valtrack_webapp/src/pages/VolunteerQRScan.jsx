@@ -55,9 +55,9 @@ export default function VolunteerQRScan() {
 
     // Fetch Areas and Data when branch changes
     useEffect(() => {
-        if (!selectedBranch?.id) return;
+        if (!selectedBranch?.id || !session) return;
         fetchAreasAndData();
-    }, [selectedBranch]);
+    }, [selectedBranch, session]);
 
     // Refresh data periodically or on selection change
     useEffect(() => {
@@ -70,19 +70,26 @@ export default function VolunteerQRScan() {
         setIsLoading(true);
         try {
             // 1. Fetch Areas
-            // Fetch floors first
-            const { data: floors } = await supabase.from('floors').select('id').eq('branch_id', selectedBranch.id);
-            const floorIds = floors?.map(f => f.id) || [];
+            let areaQuery = supabase.from('areas').select('*, floors(label, floor_number)');
 
-            let fetchedAreas = [];
-            if (floorIds.length > 0) {
-                const { data: areaData } = await supabase
-                    .from('areas')
-                    .select('*, floors(label, floor_number)')
-                    .in('floor_id', floorIds)
-                    .order('name');
-                fetchedAreas = areaData || [];
+            if (session.assigned_area_id) {
+                areaQuery = areaQuery.eq('id', session.assigned_area_id);
+            } else if (session.assigned_floor_id) {
+                areaQuery = areaQuery.eq('floor_id', session.assigned_floor_id);
+            } else {
+                const { data: floors } = await supabase.from('floors').select('id').eq('branch_id', selectedBranch.id);
+                const floorIds = floors?.map(f => f.id) || [];
+                if (floorIds.length > 0) {
+                    areaQuery = areaQuery.in('floor_id', floorIds);
+                } else {
+                    setAreas([]);
+                    setIsLoading(false);
+                    return;
+                }
             }
+
+            const { data: areaData } = await areaQuery.order('name');
+            const fetchedAreas = areaData || [];
             setAreas(fetchedAreas);
 
             // Set default selected area if not set but available
@@ -286,40 +293,10 @@ export default function VolunteerQRScan() {
                             {/* Area Selection & Status */}
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                                 {/* Area Selector */}
-                                <div className="bg-white rounded-xl p-6 border border-gray-100 flex flex-col h-full max-h-[500px]">
-                                    <h3 className="font-semibold mb-4 text-gray-900 flex items-center gap-2">
-                                        <MapPin className="w-5 h-5 text-blue-600" /> Select Area
-                                    </h3>
-                                    <div className="space-y-2 overflow-y-auto custom-scrollbar pr-2 flex-1">
-                                        {areas.length > 0 ? areas.map((area) => (
-                                            <button
-                                                key={area.id}
-                                                onClick={() => setSelectedArea(area)}
-                                                className={`w-full px-4 py-3 rounded-lg text-left transition-all ${selectedArea?.id === area.id
-                                                        ? 'bg-[#00104A] text-white shadow-md'
-                                                        : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
-                                                    }`}
-                                            >
-                                                <div className="flex items-center justify-between">
-                                                    <div>
-                                                        <span className="font-medium block">{area.name}</span>
-                                                        <span className={`text-xs ${selectedArea?.id === area.id ? 'text-blue-200' : 'text-gray-400'}`}>
-                                                            {area.floors?.label || `Floor ${area.floors?.floor_number}`}
-                                                        </span>
-                                                    </div>
-                                                    <span className={`text-sm font-mono ${selectedArea?.id === area.id ? 'text-blue-200' : 'text-gray-500'}`}>
-                                                        {areaCounts[area.id] || 0}/{area.capacity}
-                                                    </span>
-                                                </div>
-                                            </button>
-                                        )) : (
-                                            <div className="text-center text-gray-400 py-10 italic">No areas available</div>
-                                        )}
-                                    </div>
-                                </div>
+                                {/* Area Selector Removed */}
 
                                 {/* Current Area Status */}
-                                <div className="bg-white rounded-xl p-6 border border-gray-100 lg:col-span-2 flex flex-col justify-between">
+                                <div className="bg-white rounded-xl p-6 border border-gray-100 lg:col-span-3 flex flex-col justify-between">
                                     {selectedArea ? (
                                         <>
                                             <div className="flex items-center justify-between mb-4">
@@ -418,13 +395,13 @@ export default function VolunteerQRScan() {
                                                 onClick={() => handleDemoScan(patron)}
                                                 disabled={isScanning || !selectedArea}
                                                 className={`p-4 rounded-xl border-2 text-center transition-all hover:shadow-md ${isInCurrentArea ? 'border-green-500 bg-green-50' :
-                                                        isInOtherArea ? 'border-amber-300 bg-amber-50 opacity-80' :
-                                                            'border-gray-200 hover:border-blue-300'
+                                                    isInOtherArea ? 'border-amber-300 bg-amber-50 opacity-80' :
+                                                        'border-gray-200 hover:border-blue-300'
                                                     } ${isScanning || !selectedArea ? 'opacity-50 cursor-not-allowed' : ''}`}
                                             >
                                                 <div className={`w-16 h-16 mx-auto mb-3 rounded-lg flex items-center justify-center ${isInCurrentArea ? 'bg-green-100 text-green-600' :
-                                                        isInOtherArea ? 'bg-amber-100 text-amber-600' :
-                                                            'bg-gray-100 text-gray-400'
+                                                    isInOtherArea ? 'bg-amber-100 text-amber-600' :
+                                                        'bg-gray-100 text-gray-400'
                                                     }`}>
                                                     <QrCode className="w-10 h-10" />
                                                 </div>

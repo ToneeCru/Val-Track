@@ -208,9 +208,9 @@ export default function Topbar({ title, subtitle }) {
                     </div>
 
                     <div className="flex items-center gap-3 pl-2 border-l border-gray-200">
-                        <button
-                            onClick={() => setIsProfileModalOpen(true)}
-                            className="relative group transition-all hover:scale-105"
+                        <div
+                            onClick={() => session.role === 'admin' && setIsProfileModalOpen(true)}
+                            className={`relative transition-all ${session.role === 'admin' ? 'hover:scale-105 cursor-pointer group' : ''}`}
                         >
                             <div
                                 className="w-9 h-9 rounded-full flex items-center justify-center text-white font-medium text-sm overflow-hidden border border-gray-200"
@@ -222,7 +222,7 @@ export default function Topbar({ title, subtitle }) {
                                     (session.name || session.full_name)?.charAt(0) || 'U'
                                 )}
                             </div>
-                        </button>
+                        </div>
                     </div>
                 </div>
             </div>

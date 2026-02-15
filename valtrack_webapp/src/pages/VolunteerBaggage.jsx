@@ -49,10 +49,10 @@ export default function VolunteerBaggage() {
 
     // Fetch Areas when branch changes
     useEffect(() => {
-        if (selectedBranch?.id) {
+        if (selectedBranch?.id && session) {
             fetchAreas();
         }
-    }, [selectedBranch]);
+    }, [selectedBranch, session]);
 
     // Fetch Baggage Data when selectedArea changes
     useEffect(() => {
@@ -63,21 +63,35 @@ export default function VolunteerBaggage() {
 
     const fetchAreas = async () => {
         try {
-            const { data: floors } = await supabase.from('floors').select('id').eq('branch_id', selectedBranch.id);
-            const floorIds = floors?.map(f => f.id) || [];
+            let areaQuery = supabase.from('areas').select('*, floors(label, floor_number)');
 
-            let fetchedAreas = [];
-            if (floorIds.length > 0) {
-                const { data: areaData } = await supabase
-                    .from('areas')
-                    .select('*, floors(label, floor_number)')
-                    .in('floor_id', floorIds)
-                    .order('name');
-                fetchedAreas = areaData || [];
+            if (session.assigned_area_id) {
+                areaQuery = areaQuery.eq('id', session.assigned_area_id);
+            } else if (session.assigned_floor_id) {
+                areaQuery = areaQuery.eq('floor_id', session.assigned_floor_id);
+            } else {
+                const { data: floors } = await supabase.from('floors').select('id').eq('branch_id', selectedBranch.id);
+                const floorIds = floors?.map(f => f.id) || [];
+                if (floorIds.length > 0) {
+                    areaQuery = areaQuery.in('floor_id', floorIds);
+                } else {
+                    setAreas([]);
+                    return;
+                }
             }
+
+            const { data: areaData } = await areaQuery.order('name');
+            const fetchedAreas = areaData || [];
             setAreas(fetchedAreas);
-            if (fetchedAreas.length > 0 && !selectedArea) {
-                setSelectedArea(fetchedAreas[0]);
+
+            if (fetchedAreas.length > 0) {
+                if (session.assigned_area_id) {
+                    if (selectedArea?.id !== session.assigned_area_id) {
+                        setSelectedArea(fetchedAreas[0]);
+                    }
+                } else if (!selectedArea) {
+                    setSelectedArea(fetchedAreas[0]);
+                }
             }
         } catch (error) {
             console.error("Error fetching areas", error);
@@ -253,30 +267,15 @@ export default function VolunteerBaggage() {
                             {/* Area Selection & Stats */}
                             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
                                 <div className="bg-white rounded-xl p-6 border border-gray-100 lg:col-span-2 flex flex-col justify-center">
-                                    <h3 className="font-semibold mb-4 text-gray-900 flex items-center gap-2">
-                                        <MapPin className="w-5 h-5 text-blue-600" /> Select Area
+                                    <h3 className="font-semibold mb-2 text-gray-900 flex items-center gap-2">
+                                        <MapPin className="w-5 h-5 text-blue-600" /> Current Area
                                     </h3>
-                                    <div className="flex items-center gap-2 overflow-x-auto pb-2">
-                                        {areas.length > 0 ? areas.map(area => (
-                                            <button
-                                                key={area.id}
-                                                onClick={() => setSelectedArea(area)}
-                                                className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${selectedArea?.id === area.id
-                                                        ? 'bg-[#00104A] text-white shadow-md'
-                                                        : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
-                                                    }`}
-                                            >
-                                                {area.name}
-                                            </button>
-                                        )) : (
-                                            <div className="text-gray-400 italic">No areas found.</div>
-                                        )}
-                                    </div>
-                                    {selectedArea && (
-                                        <p className="text-xs text-gray-500 mt-2">
-                                            Currently managing: <span className="font-medium text-gray-900">{selectedArea.name}</span> ({selectedArea.floors?.label})
+                                    <div className="flex flex-col">
+                                        <p className="text-xl font-bold text-gray-900">{selectedArea?.name || 'Loading...'}</p>
+                                        <p className="text-sm text-gray-500">
+                                            {selectedArea?.floors?.label || (selectedArea ? `Floor ${selectedArea.floors?.floor_number}` : '')}
                                         </p>
-                                    )}
+                                    </div>
                                 </div>
 
                                 <div className="bg-white rounded-xl p-6 border border-gray-100 flex items-center justify-between col-span-2">
@@ -297,13 +296,13 @@ export default function VolunteerBaggage() {
                             {scanResult && (
                                 <div
                                     className={`mb-6 p-6 rounded-xl border-l-4 shadow-sm animate-in fade-in slide-in-from-top-4 ${scanResult.type === 'error' ? 'bg-red-50 border-red-500' :
-                                            scanResult.type === 'checkin' ? 'bg-green-50 border-green-500' : 'bg-blue-50 border-blue-500'
+                                        scanResult.type === 'checkin' ? 'bg-green-50 border-green-500' : 'bg-blue-50 border-blue-500'
                                         }`}
                                 >
                                     <div className="flex items-center gap-4">
                                         <div
                                             className={`w-12 h-12 rounded-full flex items-center justify-center ${scanResult.type === 'error' ? 'bg-red-100 text-red-600' :
-                                                    scanResult.type === 'checkin' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'
+                                                scanResult.type === 'checkin' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'
                                                 }`}
                                         >
                                             {scanResult.type === 'error'
@@ -313,7 +312,7 @@ export default function VolunteerBaggage() {
                                         </div>
                                         <div>
                                             <h4 className={`font-bold text-lg ${scanResult.type === 'error' ? 'text-red-900' :
-                                                    scanResult.type === 'checkin' ? 'text-green-900' : 'text-blue-900'
+                                                scanResult.type === 'checkin' ? 'text-green-900' : 'text-blue-900'
                                                 }`}>
                                                 {scanResult.message}
                                             </h4>

@@ -49,31 +49,47 @@ export default function StaffDashboard() {
     // Fetch Areas for the selected branch
     useEffect(() => {
         const fetchAreas = async () => {
-            if (!selectedBranch?.id) return;
+            if (!selectedBranch?.id || !session) return;
 
             try {
-                // Fetch floors first
-                const { data: floors } = await supabase
-                    .from('floors')
-                    .select('id')
-                    .eq('branch_id', selectedBranch.id);
+                let areaQuery = supabase.from('areas').select('*, floors(label, floor_number)');
 
-                const floorIds = floors?.map(f => f.id) || [];
+                // 1. Enforce Area Assignment
+                if (session.assigned_area_id) {
+                    areaQuery = areaQuery.eq('id', session.assigned_area_id);
+                }
+                // 2. Enforce Floor Assignment
+                else if (session.assigned_floor_id) {
+                    areaQuery = areaQuery.eq('floor_id', session.assigned_floor_id);
+                }
+                // 3. Fallback to Branch (fetch all floors in branch)
+                else {
+                    const { data: floors } = await supabase
+                        .from('floors')
+                        .select('id')
+                        .eq('branch_id', selectedBranch.id);
+                    const floorIds = floors?.map(f => f.id) || [];
 
-                if (floorIds.length > 0) {
-                    const { data: areaData, error } = await supabase
-                        .from('areas')
-                        .select('*, floors(label, floor_number)')
-                        .in('floor_id', floorIds)
-                        .order('name');
+                    if (floorIds.length === 0) {
+                        setAreas([]);
+                        return;
+                    }
+                    areaQuery = areaQuery.in('floor_id', floorIds);
+                }
 
-                    if (error) throw error;
-                    setAreas(areaData || []);
-                    if (areaData?.length > 0) {
+                const { data: areaData, error } = await areaQuery.order('name');
+
+                if (error) throw error;
+                setAreas(areaData || []);
+
+                // Auto-select if not selected or if restricted
+                if (areaData?.length > 0) {
+                    // If assigned area, force select
+                    if (session.assigned_area_id) {
+                        setSelectedArea(areaData[0]);
+                    } else if (!selectedArea || !areaData.find(a => a.id === selectedArea.id)) {
                         setSelectedArea(areaData[0]);
                     }
-                } else {
-                    setAreas([]);
                 }
             } catch (error) {
                 console.error("Error fetching areas", error);
@@ -81,7 +97,7 @@ export default function StaffDashboard() {
         };
 
         fetchAreas();
-    }, [selectedBranch]);
+    }, [selectedBranch, session]);
 
     useEffect(() => {
         if (session && selectedArea) {
@@ -175,33 +191,17 @@ export default function StaffDashboard() {
                 <Topbar title="Staff Dashboard" subtitle={`Welcome back, ${session.name || session.username}`} />
 
                 <main className="p-8">
-                    {/* Area Selection */}
-                    <div className="bg-white rounded-xl p-4 border border-gray-100 mb-8 shadow-sm">
-                        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-                            <div>
-                                <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                                    <MapPin className="w-5 h-5 text-blue-600" />
-                                    Current Area Assignment
-                                </h3>
-                                <p className="text-sm text-gray-500">Select your working area for today</p>
-                            </div>
-                            <div className="flex items-center gap-2 overflow-x-auto max-w-full pb-2 md:pb-0">
-                                {areas.length > 0 ? areas.map((area) => (
-                                    <button
-                                        key={area.id}
-                                        onClick={() => setSelectedArea(area)}
-                                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${selectedArea?.id === area.id
-                                                ? 'bg-[#00104A] text-white shadow-md transform scale-105'
-                                                : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
-                                            }`}
-                                    >
-                                        {area.name} <span className="opacity-60 text-xs ml-1">({area.floors?.label || `Fl ${area.floors?.floor_number}`})</span>
-                                    </button>
-                                )) : (
-                                    <span className="text-sm text-gray-400 italic">No areas found in this branch</span>
-                                )}
-                            </div>
+                    <div className="bg-white rounded-xl p-6 border border-gray-100 mb-8 flex items-center justify-between shadow-sm">
+                        <div className="flex flex-col">
+                            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                <MapPin className="w-5 h-5 text-blue-600" />
+                                {selectedArea ? selectedArea.name : 'Loading Area...'}
+                            </h3>
+                            <p className="text-sm text-gray-500">
+                                {selectedArea?.floors?.label || (selectedArea ? `Floor ${selectedArea.floors?.floor_number}` : '')}
+                            </p>
                         </div>
+                        {/* Area selection removed as per policy */}
                     </div>
 
                     {!selectedArea ? (

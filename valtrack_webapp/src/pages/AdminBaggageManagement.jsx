@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Topbar from '../components/Topbar';
 import Modal from '../components/Modal';
+import BranchSelector from '../components/BranchSelector';
 import { supabase } from '../lib/supabase';
 import { useBranch } from '../context/BranchContext';
 import { toast } from 'sonner';
@@ -57,13 +58,7 @@ export default function AdminSlotManagement() {
 
     // Fetch Floors when branch changes
     useEffect(() => {
-        if (branch?.id) {
-            fetchFloors();
-        } else {
-            setFloors([]);
-            setAreas([]);
-            setBaggageList([]);
-        }
+        fetchFloors();
     }, [branch]);
 
     // Fetch Areas when floor changes
@@ -86,19 +81,21 @@ export default function AdminSlotManagement() {
 
     const fetchFloors = async () => {
         try {
-            const { data, error } = await supabase
+            let query = supabase
                 .from('floors')
-                .select('*')
-                .eq('branch_id', branch.id)
+                .select('*, branches(name)')
+                .order('branch_id')
                 .order('floor_number');
 
+            if (branch?.id) {
+                query = query.eq('branch_id', branch.id);
+            }
+
+            const { data, error } = await query;
             if (error) throw error;
             setFloors(data || []);
 
             if (data && data.length > 0) {
-                // Select first floor by default if none selected or invalid
-                // IMPORTANT: When switching branches, selectedFloorId might still be holding an ID from the PREVIOUS branch.
-                // We must check if the current selectedFloorId exists in the NEW list of floors.
                 if (!selectedFloorId || !data.find(f => f.id === selectedFloorId)) {
                     setSelectedFloorId(data[0].id);
                 }
@@ -151,15 +148,8 @@ export default function AdminSlotManagement() {
             if (error) throw error;
             setBaggageList(data || []);
 
-            // Fetch Claimed Today Stats
-            // We need to query baggage_logs for items checked out today in this area
             const todayStart = new Date();
-            todayStart.setHours(0, 0, 0, 0); // Start of today in local time (or should be UTC?)
-            // If check_out_time is stored in UTC (default timezone('utc', now())), we should query with UTC ISO string.
-            // Using toISOString gives UTC time.
-            // But we want "Today" in local time presumably? 
-            // If the user is in a different timezone than UTC, comparing against UTC start of day might be off.
-            // Let's rely on client-side date for "Today".
+            todayStart.setHours(0, 0, 0, 0);
 
             const { count, error: logError } = await supabase
                 .from('baggage_logs')
@@ -168,7 +158,6 @@ export default function AdminSlotManagement() {
                 .gte('check_out_time', todayStart.toISOString());
 
             if (logError) {
-                // Determine if table exists (it might not have propagated if schema update failed, but we assume it worked)
                 console.error('Error fetching logs:', logError);
             } else {
                 setClaimedTodayCount(count || 0);
@@ -188,10 +177,9 @@ export default function AdminSlotManagement() {
         try {
             const currentCount = baggageList.length;
             const targetCount = parseInt(configCount);
-            const currentArea = areas.find(a => a.id === selectedAreaId);
 
             if (targetCount < currentCount) {
-                // Remove last N slots (ensure they are empty)
+                // Remove slots
                 const slotsToRemove = baggageList.slice(targetCount);
                 const occupied = slotsToRemove.filter(s => s.status === 'occupied');
 
@@ -205,23 +193,11 @@ export default function AdminSlotManagement() {
                 if (error) throw error;
 
             } else if (targetCount > currentCount) {
-                // Add new slots
+                // Add slots
                 const newSlots = [];
-                // Naming convention: {BranchPrefix}-{Floor}-{AreaPrefix}-{Number} ??
-                // Let's stick to simple: {AreaName}-{Number} or just allow the DB to generate IDs? 
-                // DB has text ID. Let's make a pattern.
-                // Assuming Area Name is unique enough or just use random IDs?
-                // Use a prefix based on Floor/Area?
-                // Let's use simple IDs for display: "L-{Number}" but unique in DB?
-                // The DB schema has `id` as text primary key.
-                // We need to generate unique IDs. 
-                // Let's use `{AreaID_Prefix}-{Index}`? No, duplicate if same index.
-                // Let's use Random UUID or Time based? 
-                // Or: {AreaID}-{Index}
-
                 for (let i = currentCount + 1; i <= targetCount; i++) {
                     newSlots.push({
-                        id: `Locker-${selectedAreaId.slice(0, 4)}-${Date.now()}-${i}`, // Unique ID
+                        id: `Locker-${selectedAreaId.slice(0, 4)}-${Date.now()}-${i}`,
                         area_id: selectedAreaId,
                         status: 'available'
                     });
@@ -266,7 +242,6 @@ export default function AdminSlotManagement() {
     );
 
     const occupiedCount = baggageList.filter(b => b.status === 'occupied').length;
-    const availableCount = baggageList.filter(b => b.status === 'available').length;
 
     if (!session) return null;
 
@@ -276,240 +251,191 @@ export default function AdminSlotManagement() {
             <div className="ml-64">
                 <Topbar
                     title="Baggage Management"
-                    subtitle={branch ? `${branch.name} Baggage Lockers` : 'Select a Branch'}
+                    subtitle={branch ? `${branch.name} Baggage Lockers` : 'All Branches Baggage Config'}
                 />
 
-                <main className="p-8">
-                    {!branch ? (
-                        <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border border-dashed border-gray-300">
-                            <Layout className="w-12 h-12 text-gray-300 mb-4" />
-                            <p className="text-gray-500 font-medium">Please select a branch to manage baggage.</p>
+                <div className="px-8 pt-6">
+                    <div className="flex justify-end">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-500 font-medium">Viewing Data For:</span>
+                            <BranchSelector />
                         </div>
-                    ) : (
-                        <>
-                            {/* Filters: Floor -> Area */}
-                            <div className="mb-8 space-y-4">
-                                <div className="flex items-center gap-2 overflow-x-auto pb-2">
-                                    {floors.map(floor => (
-                                        <button
-                                            key={floor.id}
-                                            onClick={() => setSelectedFloorId(floor.id)}
-                                            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${selectedFloorId === floor.id
-                                                ? 'bg-[#00104A] text-white shadow-md'
-                                                : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
-                                                }`}
-                                        >
-                                            {floor.label || `Floor ${floor.floor_number}`}
-                                        </button>
-                                    ))}
-                                </div>
+                    </div>
+                </div>
 
-                                {selectedFloorId && areas.length > 0 && (
-                                    <div className="flex items-center gap-2 overflow-x-auto pb-2">
-                                        {areas.map(area => (
-                                            <button
-                                                key={area.id}
-                                                onClick={() => setSelectedAreaId(area.id)}
-                                                className={`px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-all ${selectedAreaId === area.id
-                                                    ? 'bg-[#56CBF9] text-white shadow-sm'
-                                                    : 'bg-white text-gray-500 hover:bg-gray-50 border border-gray-200'
-                                                    }`}
-                                            >
-                                                {area.name}
-                                            </button>
-                                        ))}
+                <main className="p-8">
+                    {/* Filters: Floor -> Area */}
+                    <div className="mb-8 space-y-4">
+                        <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                            {floors.map(floor => (
+                                <button
+                                    key={floor.id}
+                                    onClick={() => setSelectedFloorId(floor.id)}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${selectedFloorId === floor.id
+                                        ? 'bg-[#00104A] text-white shadow-md'
+                                        : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                                        }`}
+                                >
+                                    {!branch && floor.branches ? `${floor.branches.name} - ` : ''}
+                                    {floor.label || `Floor ${floor.floor_number}`}
+                                </button>
+                            ))}
+                            {floors.length === 0 && (
+                                <p className="text-gray-400 italic text-sm">No floors found.</p>
+                            )}
+                        </div>
+
+                        {selectedFloorId && areas.length > 0 && (
+                            <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                                {areas.map(area => (
+                                    <button
+                                        key={area.id}
+                                        onClick={() => setSelectedAreaId(area.id)}
+                                        className={`px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-all ${selectedAreaId === area.id
+                                            ? 'bg-[#56CBF9] text-white shadow-sm'
+                                            : 'bg-white text-gray-500 hover:bg-gray-50 border border-gray-200'
+                                            }`}
+                                    >
+                                        {area.name}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                        {selectedFloorId && areas.length === 0 && (
+                            <p className="text-gray-400 italic text-xs">No areas found in this floor.</p>
+                        )}
+                    </div>
+
+                    {/* Content */}
+                    {selectedAreaId ? (
+                        <>
+                            {/* Stats */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                                <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="text-sm text-gray-500">Total Overdue Items</p>
+                                            <p className="text-3xl font-bold text-red-600">
+                                                {baggageList.filter(b => {
+                                                    if (b.status !== 'occupied' || !b.check_in_time) return false;
+                                                    const checkInDate = new Date(b.check_in_time);
+                                                    const todayMidnight = new Date();
+                                                    todayMidnight.setHours(0, 0, 0, 0);
+                                                    return checkInDate < todayMidnight;
+                                                }).length}
+                                            </p>
+                                            <p className="text-xs text-red-400 mt-1">Items left overnight</p>
+                                        </div>
+                                        <div className="p-3 bg-red-50 rounded-xl">
+                                            <AlertCircle className="w-6 h-6 text-red-500" />
+                                        </div>
                                     </div>
-                                )}
+                                </div>
+                                <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="text-sm text-gray-500">Total Claimed Today</p>
+                                            <p className="text-3xl font-bold text-green-600">{claimedTodayCount}</p>
+                                        </div>
+                                        <div className="p-3 bg-green-50 rounded-xl">
+                                            <Package className="w-6 h-6 text-green-500" />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="text-sm text-gray-500">Total Current Deposited</p>
+                                            <p className="text-3xl font-bold text-amber-500">{occupiedCount}</p>
+                                        </div>
+                                        <div className="p-3 bg-amber-50 rounded-xl">
+                                            <User className="w-6 h-6 text-amber-500" />
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
-                            {/* Content */}
-                            {selectedAreaId ? (
-                                <>
-                                    {/* Stats */}
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                                        <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
-                                            <div className="flex justify-between items-center">
-                                                <div>
-                                                    <p className="text-sm text-gray-500">Total Overdue Items</p>
-                                                    <p className="text-3xl font-bold text-red-600">
-                                                        {baggageList.filter(b => {
-                                                            if (b.status !== 'occupied' || !b.check_in_time) return false;
-                                                            // Overdue if checked in before today (i.e., passed 12am midnight)
-                                                            const checkInDate = new Date(b.check_in_time);
-                                                            const todayMidnight = new Date();
-                                                            todayMidnight.setHours(0, 0, 0, 0);
-                                                            return checkInDate < todayMidnight;
-                                                        }).length}
-                                                    </p>
-                                                    <p className="text-xs text-red-400 mt-1">Items left overnight</p>
-                                                </div>
-                                                <div className="p-3 bg-red-50 rounded-xl">
-                                                    <AlertCircle className="w-6 h-6 text-red-500" />
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
-                                            <div className="flex justify-between items-center">
-                                                <div>
-                                                    <p className="text-sm text-gray-500">Total Claimed Today</p>
-                                                    <p className="text-3xl font-bold text-green-600">{claimedTodayCount}</p>
-                                                </div>
-                                                <div className="p-3 bg-green-50 rounded-xl">
-                                                    <Package className="w-6 h-6 text-green-500" />
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
-                                            <div className="flex justify-between items-center">
-                                                <div>
-                                                    <p className="text-sm text-gray-500">Total Current Deposited</p>
-                                                    <p className="text-3xl font-bold text-amber-500">{occupiedCount}</p>
-                                                </div>
-                                                <div className="p-3 bg-amber-50 rounded-xl">
-                                                    <User className="w-6 h-6 text-amber-500" />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
+                            {/* Actions Row */}
+                            <div className="flex justify-between items-center mb-6">
+                                <div className="relative w-64">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search lockers..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="w-full pl-9 pr-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#56CBF9]"
+                                    />
+                                </div>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => {
+                                            setConfigCount(baggageList.length);
+                                            setIsConfigModalOpen(true);
+                                        }}
+                                        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-700 font-medium"
+                                    >
+                                        <Settings className="w-4 h-4" />
+                                        Configure
+                                    </button>
+                                    <button
+                                        onClick={handleDownload}
+                                        className="flex items-center gap-2 px-4 py-2 bg-[#00104A] text-white rounded-lg hover:opacity-90 font-medium"
+                                    >
+                                        <Download className="w-4 h-4" />
+                                        Export Report
+                                    </button>
+                                </div>
+                            </div>
 
-                                    {/* Actions Row */}
-                                    <div className="flex justify-between items-center mb-6">
-                                        <div className="relative w-64">
-                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                            <input
-                                                type="text"
-                                                placeholder="Search lockers..."
-                                                value={searchTerm}
-                                                onChange={(e) => setSearchTerm(e.target.value)}
-                                                className="w-full pl-9 pr-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#56CBF9]"
-                                            />
-                                        </div>
-                                        <div className="flex gap-3">
-                                            <button
-                                                onClick={() => {
-                                                    setConfigCount(baggageList.length);
-                                                    setIsConfigModalOpen(true);
-                                                }}
-                                                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-700 font-medium"
-                                            >
-                                                <Settings className="w-4 h-4" />
-                                                Configure
-                                            </button>
-                                            <button
-                                                onClick={handleDownload}
-                                                className="flex items-center gap-2 px-4 py-2 bg-[#00104A] text-white rounded-lg hover:opacity-90 font-medium"
-                                            >
-                                                <Download className="w-4 h-4" />
-                                                Export Report
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {/* Active Baggages Table */}
-                                    <div className="bg-white rounded-xl border border-gray-100 shadow-sm mb-8 overflow-hidden">
-                                        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                                            <h3 className="font-semibold text-gray-900">Active Baggages</h3>
-                                            <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full font-medium">
-                                                {occupiedCount} Occupied
-                                            </span>
-                                        </div>
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-sm text-left">
-                                                <thead className="bg-gray-50 text-gray-500 font-medium">
-                                                    <tr>
-                                                        <th className="px-6 py-3">Locker ID</th>
-                                                        <th className="px-6 py-3">Patron Name</th>
-                                                        <th className="px-6 py-3">Patron ID</th>
-                                                        <th className="px-6 py-3">Check-in Time</th>
-                                                        <th className="px-6 py-3">Status</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-gray-100">
-                                                    {filteredBaggage.filter(b => b.status === 'occupied').map(item => {
-                                                        const todayMidnight = new Date();
-                                                        todayMidnight.setHours(0, 0, 0, 0);
-                                                        const checkIn = item.check_in_time ? new Date(item.check_in_time) : null;
-                                                        const isOverdue = checkIn && checkIn < todayMidnight;
-
-                                                        return (
-                                                            <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                                                                <td className="px-6 py-4 font-medium text-gray-900">{item.id}</td>
-                                                                <td className="px-6 py-4">{item.patron_name || 'N/A'}</td>
-                                                                <td className="px-6 py-4 text-gray-500">{item.patron_id || 'N/A'}</td>
-                                                                <td className="px-6 py-4">
-                                                                    {item.check_in_time ? new Date(item.check_in_time).toLocaleString() : '-'}
-                                                                    {isOverdue && <span className="ml-2 text-xs text-red-500 font-bold">(Overdue)</span>}
-                                                                </td>
-                                                                <td className="px-6 py-4">
-                                                                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-amber-50 text-amber-700 border border-amber-100">
-                                                                        Occupied
-                                                                    </span>
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                    {filteredBaggage.filter(b => b.status === 'occupied').length === 0 && (
-                                                        <tr>
-                                                            <td colSpan="5" className="px-6 py-8 text-center text-gray-400">
-                                                                No active baggages currently deposited.
-                                                            </td>
-                                                        </tr>
-                                                    )}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-
-                                    {/* Grid */}
-                                    {isLoading ? (
-                                        <div className="py-20 flex justify-center">
-                                            <div className="w-8 h-8 border-4 border-gray-200 border-t-[#00104A] rounded-full animate-spin" />
-                                        </div>
-                                    ) : (
-                                        <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
-                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                                                {filteredBaggage.map((item, idx) => (
-                                                    <div
-                                                        key={item.id}
-                                                        onClick={() => item.status === 'occupied' && setSelectedBaggage(item)}
-                                                        className={`p-4 rounded-xl border-2 cursor-pointer transition-all hover:scale-105 ${item.status === 'occupied'
-                                                            ? 'border-amber-200 bg-amber-50'
-                                                            : 'border-green-200 bg-green-50'
-                                                            }`}
-                                                    >
-                                                        <div className="flex flex-col items-center gap-2">
-                                                            <Package className={`w-6 h-6 ${item.status === 'occupied' ? 'text-amber-500' : 'text-green-500'}`} />
-                                                            <div className="text-center">
-                                                                <span className="font-bold text-gray-800">#{idx + 1}</span>
-                                                                <p className={`text-xs font-medium uppercase mt-1 ${item.status === 'occupied' ? 'text-amber-600' : 'text-green-600'
-                                                                    }`}>
-                                                                    {item.status}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                                {filteredBaggage.length === 0 && (
-                                                    <div className="col-span-full py-12 text-center text-gray-400">
-                                                        No lockers found matching your search.
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-                                </>
+                            {/* Grid */}
+                            {isLoading ? (
+                                <div className="py-20 flex justify-center">
+                                    <div className="w-8 h-8 border-4 border-gray-200 border-t-[#00104A] rounded-full animate-spin" />
+                                </div>
                             ) : (
-                                <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border border-dashed border-gray-300">
-                                    <Grid3X3 className="w-12 h-12 text-gray-300 mb-4" />
-                                    <p className="text-gray-500 font-medium">Please select a Floor and Area to manage baggage.</p>
+                                <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                                        {filteredBaggage.map((item, idx) => (
+                                            <div
+                                                key={item.id}
+                                                onClick={() => item.status === 'occupied' && setSelectedBaggage(item)}
+                                                className={`p-4 rounded-xl border-2 cursor-pointer transition-all hover:scale-105 ${item.status === 'occupied'
+                                                    ? 'border-amber-200 bg-amber-50'
+                                                    : 'border-green-200 bg-green-50'
+                                                    }`}
+                                            >
+                                                <div className="flex flex-col items-center gap-2">
+                                                    <Package className={`w-6 h-6 ${item.status === 'occupied' ? 'text-amber-500' : 'text-green-500'}`} />
+                                                    <div className="text-center">
+                                                        <span className="font-bold text-gray-800">#{idx + 1}</span>
+                                                        <p className={`text-xs font-medium uppercase mt-1 ${item.status === 'occupied' ? 'text-amber-600' : 'text-green-600'
+                                                            }`}>
+                                                            {item.status}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {filteredBaggage.length === 0 && (
+                                            <div className="col-span-full py-12 text-center text-gray-400">
+                                                No lockers found matching your search.
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             )}
                         </>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border border-dashed border-gray-300">
+                            <Grid3X3 className="w-12 h-12 text-gray-300 mb-4" />
+                            <p className="text-gray-500 font-medium">Please select a Floor and Area to manage baggage.</p>
+                        </div>
                     )}
                 </main>
             </div>
 
-            {/* Config Modal */}
+            {/* Configure Modal */}
             <Modal
                 isOpen={isConfigModalOpen}
                 onClose={() => setIsConfigModalOpen(false)}

@@ -427,6 +427,19 @@ export default function AdminUserManagement() {
                 setAlreadyGrantedModal({ open: true, patronName: `${grantingPatron.firstname} ${grantingPatron.surname}` });
                 return;
             }
+            if (!grantAccessData.assigned_branch_id) {
+                toast.error('Branch assignment is required');
+                return;
+            }
+            if (!grantAccessData.assigned_floor_id) {
+                toast.error('Floor assignment is required');
+                return;
+            }
+            if (!grantAccessData.assigned_area_id) {
+                toast.error('Area assignment is required');
+                return;
+            }
+
             const { error } = await supabase.from('profiles').insert({
                 full_name: `${grantingPatron.firstname} ${grantingPatron.middlename ? grantingPatron.middlename + ' ' : ''}${grantingPatron.surname}`,
                 username: grantingPatron.library_id,
@@ -600,6 +613,22 @@ export default function AdminUserManagement() {
                 role = 'admin';
             } else if (formData.role === 'admin') {
                 role = 'admin';
+            }
+
+            // Validation for Staff/Volunteer Assignments
+            if (role === 'staff' || role === 'volunteer') {
+                if (!formData.assigned_branch_id) {
+                    toast.error('Branch assignment is required');
+                    return;
+                }
+                if (!formData.assigned_floor_id) {
+                    toast.error('Floor assignment is required');
+                    return;
+                }
+                if (!formData.assigned_area_id) {
+                    toast.error('Area assignment is required');
+                    return;
+                }
             }
 
             const payload = {
@@ -1210,7 +1239,7 @@ export default function AdminUserManagement() {
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">Branch</label>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">Branch *</label>
                                         <select
                                             value={formData.assigned_branch_id}
                                             onChange={e => setFormData({ ...formData, assigned_branch_id: e.target.value, assigned_floor_id: '', assigned_area_id: '' })}
@@ -1221,7 +1250,7 @@ export default function AdminUserManagement() {
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">Floor (Optional)</label>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">Floor *</label>
                                         <select
                                             value={formData.assigned_floor_id}
                                             onChange={e => setFormData({ ...formData, assigned_floor_id: e.target.value, assigned_area_id: '' })}
@@ -1233,7 +1262,7 @@ export default function AdminUserManagement() {
                                         </select>
                                     </div>
                                     <div className="col-span-full">
-                                        <label className="block text-xs font-medium text-gray-600 mb-1">Area (Optional)</label>
+                                        <label className="block text-xs font-medium text-gray-600 mb-1">Area *</label>
                                         <select
                                             value={formData.assigned_area_id}
                                             onChange={e => setFormData({ ...formData, assigned_area_id: e.target.value })}
@@ -1261,7 +1290,7 @@ export default function AdminUserManagement() {
                                 </h4>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    {getModulesForRole(formData.title === 'Library Staff' ? 'staff' : 'volunteer').map(module => (
+                                    {getModulesForRole(formData.role || 'staff').map(module => (
                                         <div
                                             key={module.key}
                                             className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${formData.permissions[module.key] ? 'border-blue-200 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'
@@ -1536,7 +1565,7 @@ export default function AdminUserManagement() {
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">Branch</label>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">Branch *</label>
                                     <select
                                         value={grantAccessData.assigned_branch_id}
                                         onChange={e => setGrantAccessData({ ...grantAccessData, assigned_branch_id: e.target.value })}
@@ -1547,7 +1576,7 @@ export default function AdminUserManagement() {
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">Floor (Optional)</label>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">Floor *</label>
                                     <select
                                         value={grantAccessData.assigned_floor_id}
                                         onChange={e => setGrantAccessData({ ...grantAccessData, assigned_floor_id: e.target.value })}
@@ -1559,7 +1588,7 @@ export default function AdminUserManagement() {
                                     </select>
                                 </div>
                                 <div className="col-span-full">
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">Area (Optional)</label>
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">Area *</label>
                                     <select
                                         value={grantAccessData.assigned_area_id}
                                         onChange={e => setGrantAccessData({ ...grantAccessData, assigned_area_id: e.target.value })}
@@ -1601,10 +1630,16 @@ export default function AdminUserManagement() {
                                     </div>
                                 ))}
                             </div>
-                            <p className="text-xs text-gray-400">Modules shown are based on the selected role. Change the Title/Role above to see different modules.</p>
+                            <p className="text-xs text-gray-400 mt-2">Modules shown are based on the Title/Role selected above.</p>
                         </div>
 
-                        <p className="text-xs text-amber-600 bg-amber-50 p-3 rounded-lg border border-amber-100">⚠️ Once this patron is granted access to a branch/area, they will not be able to change it themselves. Only an admin can update their assignment later via the Personnel tab.</p>
+                        <p className="text-xs text-amber-600 bg-amber-50 p-3 rounded-lg border border-amber-100 flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                            <span>
+                                Once this patron is granted access, they will be listed under "Active Personnel".
+                                Branch and Area assignments can be modified later by editing the user.
+                            </span>
+                        </p>
 
                         {/* Actions */}
                         <div className="flex justify-end gap-3 pt-6 border-t border-gray-100">

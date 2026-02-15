@@ -65,14 +65,20 @@ export const BranchProvider = ({ children }) => {
                         setSelectedBranch(null);
                     }
                 } else {
-                    // Admin or no assignment
+                    // Admin: Default to 'All Branches' (null) unless one was previously selected and saved
                     const savedBranchId = localStorage.getItem('selectedBranchId');
                     if (savedBranchId) {
                         const found = branchData.find(b => b.id === savedBranchId);
-                        if (found) setSelectedBranch(found);
-                        else if (branchData.length > 0) setSelectedBranch(branchData[0]);
-                    } else if (branchData.length > 0) {
-                        setSelectedBranch(branchData[0]);
+                        if (found) {
+                            setSelectedBranch(found);
+                        } else {
+                            // Saved branch invalid/deleted, default to All
+                            setSelectedBranch(null);
+                            localStorage.removeItem('selectedBranchId');
+                        }
+                    } else {
+                        // Default to All
+                        setSelectedBranch(null);
                     }
                 }
 
@@ -87,6 +93,11 @@ export const BranchProvider = ({ children }) => {
     }, []);
 
     const changeBranch = (branchId) => {
+        if (!branchId) {
+            setSelectedBranch(null);
+            localStorage.removeItem('selectedBranchId');
+            return;
+        }
         const branch = branches.find(b => b.id === branchId);
         if (branch) {
             setSelectedBranch(branch);

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Topbar from '../components/Topbar';
 import StatusBadge from '../components/StatusBadge';
+import BranchSelector from '../components/BranchSelector';
 import {
     AlertTriangle,
     Search,
@@ -40,22 +41,22 @@ export default function AdminIncidents() {
     }, [navigate]);
 
     useEffect(() => {
-        if (branch?.id) {
-            fetchIncidents();
-        } else {
-            setIncidents([]);
-        }
+        fetchIncidents();
     }, [branch]);
 
     const fetchIncidents = async () => {
         setIsLoading(true);
         try {
-            const { data, error } = await supabase
+            let query = supabase
                 .from('incidents')
-                .select('*, areas(name, floor_id)')
-                .eq('branch_id', branch.id)
+                .select('*, areas(name, floor_id), branches(name)')
                 .order('created_at', { ascending: false });
 
+            if (branch?.id) {
+                query = query.eq('branch_id', branch.id);
+            }
+
+            const { data, error } = await query;
             if (error) throw error;
             setIncidents(data || []);
         } catch (error) {
@@ -82,7 +83,8 @@ export default function AdminIncidents() {
             const inc = incidents.find(i => i.id === id);
             await supabase.from('audit_logs').insert({
                 user_name: session.name || session.username,
-                branch_id: branch.id,
+                // If branch is null, we should probably record the incident's branch
+                branch_id: inc?.branch_id || branch?.id,
                 action: 'Resolve Incident',
                 module: 'Incidents',
                 details: `Resolved incident #${id} (${inc?.type || 'unknown type'})`,
@@ -101,9 +103,9 @@ export default function AdminIncidents() {
         if (!incidents.length) return;
 
         const csvContent = [
-            'ID,Patron,Type,Description,Area,Status,Date',
+            'ID,Patron,Type,Description,Area,Branch,Status,Date',
             ...incidents.map(inc =>
-                `"${inc.id}","${inc.patron_name}","${inc.type}","${inc.description}","${inc.areas?.name || 'N/A'}","${inc.status}","${moment(inc.created_at).format('YYYY-MM-DD HH:mm:ss')}"`
+                `"${inc.id}","${inc.patron_name}","${inc.type}","${inc.description}","${inc.areas?.name || 'N/A'}","${inc.branches?.name || 'N/A'}","${inc.status}","${moment(inc.created_at).format('YYYY-MM-DD HH:mm:ss')}"`
             )
         ].join('\n');
 
@@ -132,154 +134,160 @@ export default function AdminIncidents() {
             <Sidebar role="admin" />
 
             <div className="ml-64">
-                <Topbar title="Incident & Exception" subtitle={branch ? `${branch.name} Incidents` : 'Select a Branch'} />
+                <Topbar title="Incident & Exception" subtitle={branch ? `${branch.name} Incidents` : 'All Branches Incidents'} />
+
+                <div className="px-8 pt-6">
+                    <div className="flex justify-end">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-500 font-medium">Viewing Data For:</span>
+                            <BranchSelector />
+                        </div>
+                    </div>
+                </div>
 
                 <main className="p-8">
-                    {!branch ? (
-                        <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border border-dashed border-gray-300">
-                            <Layout className="w-12 h-12 text-gray-300 mb-4" />
-                            <p className="text-gray-500 font-medium">Please select a branch to view incidents.</p>
+                    {/* Stats */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
+                            <div className="flex items-center gap-3 mb-2">
+                                <AlertTriangle className="w-5 h-5" style={{ color: '#FF2B2B' }} />
+                                <span className="text-sm text-gray-500">Open Incidents</span>
+                            </div>
+                            <p className="text-3xl font-bold" style={{ color: '#FF2B2B' }}>
+                                {incidents.filter(i => i.status === 'open').length}
+                            </p>
                         </div>
-                    ) : (
-                        <>
-                            {/* Stats */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                                <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <AlertTriangle className="w-5 h-5" style={{ color: '#FF2B2B' }} />
-                                        <span className="text-sm text-gray-500">Open Incidents</span>
-                                    </div>
-                                    <p className="text-3xl font-bold" style={{ color: '#FF2B2B' }}>
-                                        {incidents.filter(i => i.status === 'open').length}
-                                    </p>
-                                </div>
-                                <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <CheckCircle className="w-5 h-5" style={{ color: '#10B981' }} />
-                                        <span className="text-sm text-gray-500">Resolved</span>
-                                    </div>
-                                    <p className="text-3xl font-bold" style={{ color: '#10B981' }}>
-                                        {incidents.filter(i => i.status === 'resolved').length}
-                                    </p>
-                                </div>
-                                <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <FileText className="w-5 h-5" style={{ color: '#56CBF9' }} />
-                                        <span className="text-sm text-gray-500">Total Reports</span>
-                                    </div>
-                                    <p className="text-3xl font-bold" style={{ color: '#232323' }}>{incidents.length}</p>
-                                </div>
+                        <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
+                            <div className="flex items-center gap-3 mb-2">
+                                <CheckCircle className="w-5 h-5" style={{ color: '#10B981' }} />
+                                <span className="text-sm text-gray-500">Resolved</span>
+                            </div>
+                            <p className="text-3xl font-bold" style={{ color: '#10B981' }}>
+                                {incidents.filter(i => i.status === 'resolved').length}
+                            </p>
+                        </div>
+                        <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
+                            <div className="flex items-center gap-3 mb-2">
+                                <FileText className="w-5 h-5" style={{ color: '#56CBF9' }} />
+                                <span className="text-sm text-gray-500">Total Reports</span>
+                            </div>
+                            <p className="text-3xl font-bold" style={{ color: '#232323' }}>{incidents.length}</p>
+                        </div>
+                    </div>
+
+                    {/* Controls */}
+                    <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-4">
+                            <div className="relative w-80">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Search incidents..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2"
+                                    style={{ '--tw-ring-color': '#56CBF9' }}
+                                />
                             </div>
 
-                            {/* Controls */}
-                            <div className="flex items-center justify-between mb-6">
-                                <div className="flex items-center gap-4">
-                                    <div className="relative w-80">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                                        <input
-                                            type="text"
-                                            placeholder="Search incidents..."
-                                            value={searchTerm}
-                                            onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2"
-                                            style={{ '--tw-ring-color': '#56CBF9' }}
-                                        />
-                                    </div>
+                            <select
+                                value={filterStatus}
+                                onChange={(e) => setFilterStatus(e.target.value)}
+                                className="px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2"
+                                style={{ '--tw-ring-color': '#56CBF9' }}
+                            >
+                                <option value="all">All Status</option>
+                                <option value="open">Open</option>
+                                <option value="resolved">Resolved</option>
+                            </select>
+                        </div>
 
-                                    <select
-                                        value={filterStatus}
-                                        onChange={(e) => setFilterStatus(e.target.value)}
-                                        className="px-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2"
-                                        style={{ '--tw-ring-color': '#56CBF9' }}
-                                    >
-                                        <option value="all">All Status</option>
-                                        <option value="open">Open</option>
-                                        <option value="resolved">Resolved</option>
-                                    </select>
-                                </div>
+                        <button
+                            onClick={handleDownloadCSV}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-gray-700 font-medium transition-all hover:bg-gray-50 shadow-sm"
+                        >
+                            <Download className="w-4 h-4 text-gray-800" />
+                            Export CSV
+                        </button>
+                    </div>
 
-                                <button
-                                    onClick={handleDownloadCSV}
-                                    className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 text-gray-700 font-medium transition-all hover:bg-gray-50 shadow-sm"
-                                >
-                                    <Download className="w-4 h-4 text-gray-800" />
-                                    Export CSV
-                                </button>
+                    {/* Incidents Table */}
+                    <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
+                        {isLoading ? (
+                            <div className="p-12 flex justify-center">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                             </div>
-
-                            {/* Incidents Table */}
-                            <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
-                                {isLoading ? (
-                                    <div className="p-12 flex justify-center">
-                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                                    </div>
-                                ) : (
-                                    <table className="w-full">
-                                        <thead>
-                                            <tr style={{ backgroundColor: '#00104A' }}>
-                                                <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Patron</th>
-                                                <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Type</th>
-                                                <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Description</th>
-                                                <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Area</th>
-                                                <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Status</th>
-                                                <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Date</th>
-                                                <th className="px-6 py-4 text-right text-xs font-semibold text-white uppercase">Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-100">
-                                            {filteredIncidents.length > 0 ? filteredIncidents.map((incident) => (
-                                                <tr key={incident.id} className="hover:bg-gray-50 transition-colors">
-                                                    <td className="px-6 py-4">
-                                                        <div>
-                                                            <p className="font-medium text-sm" style={{ color: '#232323' }}>{incident.patron_name}</p>
-                                                            <p className="text-xs text-gray-500">{incident.patron_id}</p>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <span
-                                                            className="px-3 py-1 rounded-full text-xs font-medium capitalize"
-                                                            style={{ backgroundColor: '#00104A15', color: '#00104A' }}
-                                                        >
-                                                            {incident.type?.replace('_', ' ')}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
-                                                        {incident.description}
-                                                    </td>
-                                                    <td className="px-6 py-4 text-sm" style={{ color: '#232323' }}>
-                                                        {incident.areas?.name || 'Unknown Area'}
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <StatusBadge status={incident.status} />
-                                                    </td>
-                                                    <td className="px-6 py-4 text-sm text-gray-500">
-                                                        {moment(incident.created_at).format('MMM DD, YYYY')}
-                                                    </td>
-                                                    <td className="px-6 py-4 text-right">
-                                                        {incident.status === 'open' && (
-                                                            <button
-                                                                onClick={() => handleResolve(incident.id)}
-                                                                className="px-3 py-1 rounded-lg text-xs font-medium text-white transition-all hover:opacity-90 shadow-sm"
-                                                                style={{ backgroundColor: '#10B981' }}
-                                                            >
-                                                                Resolve
-                                                            </button>
-                                                        )}
-                                                    </td>
-                                                </tr>
-                                            )) : (
-                                                <tr>
-                                                    <td colSpan="7" className="px-6 py-10 text-center text-gray-500">
-                                                        No incident reports found.
-                                                    </td>
-                                                </tr>
+                        ) : (
+                            <table className="w-full">
+                                <thead>
+                                    <tr style={{ backgroundColor: '#00104A' }}>
+                                        <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Patron</th>
+                                        <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Type</th>
+                                        <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Description</th>
+                                        <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Area</th>
+                                        {!branch && <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Branch</th>}
+                                        <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Status</th>
+                                        <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase">Date</th>
+                                        <th className="px-6 py-4 text-right text-xs font-semibold text-white uppercase">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {filteredIncidents.length > 0 ? filteredIncidents.map((incident) => (
+                                        <tr key={incident.id} className="hover:bg-gray-50 transition-colors">
+                                            <td className="px-6 py-4">
+                                                <div>
+                                                    <p className="font-medium text-sm" style={{ color: '#232323' }}>{incident.patron_name}</p>
+                                                    <p className="text-xs text-gray-500">{incident.patron_id}</p>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span
+                                                    className="px-3 py-1 rounded-full text-xs font-medium capitalize"
+                                                    style={{ backgroundColor: '#00104A15', color: '#00104A' }}
+                                                >
+                                                    {incident.type?.replace('_', ' ')}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
+                                                {incident.description}
+                                            </td>
+                                            <td className="px-6 py-4 text-sm" style={{ color: '#232323' }}>
+                                                {incident.areas?.name || 'Unknown Area'}
+                                            </td>
+                                            {!branch && (
+                                                <td className="px-6 py-4 text-sm" style={{ color: '#232323' }}>
+                                                    {incident.branches?.name || 'Unknown'}
+                                                </td>
                                             )}
-                                        </tbody>
-                                    </table>
-                                )}
-                            </div>
-                        </>
-                    )}
+                                            <td className="px-6 py-4">
+                                                <StatusBadge status={incident.status} />
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-500">
+                                                {moment(incident.created_at).format('MMM DD, YYYY')}
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                {incident.status === 'open' && (
+                                                    <button
+                                                        onClick={() => handleResolve(incident.id)}
+                                                        className="px-3 py-1 rounded-lg text-xs font-medium text-white transition-all hover:opacity-90 shadow-sm"
+                                                        style={{ backgroundColor: '#10B981' }}
+                                                    >
+                                                        Resolve
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    )) : (
+                                        <tr>
+                                            <td colSpan={!branch ? 8 : 7} className="px-6 py-10 text-center text-gray-500">
+                                                No incident reports found.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
                 </main>
             </div>
         </div>

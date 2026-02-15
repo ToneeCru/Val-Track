@@ -47,10 +47,10 @@ export default function VolunteerDashboard() {
 
     // Fetch Areas when branch changes
     useEffect(() => {
-        if (selectedBranch?.id) {
+        if (selectedBranch?.id && session) {
             fetchAreas();
         }
-    }, [selectedBranch]);
+    }, [selectedBranch, session]);
 
     // Fetch Dashboard Data when Area changes
     useEffect(() => {
@@ -87,22 +87,34 @@ export default function VolunteerDashboard() {
 
     const fetchAreas = async () => {
         try {
-            const { data: floors } = await supabase.from('floors').select('id').eq('branch_id', selectedBranch.id);
-            const floorIds = floors?.map(f => f.id) || [];
+            let areaQuery = supabase.from('areas').select('*, floors(label, floor_number)');
 
-            if (floorIds.length > 0) {
-                const { data: areaData } = await supabase
-                    .from('areas')
-                    .select('*, floors(label, floor_number)')
-                    .in('floor_id', floorIds)
-                    .order('name');
+            if (session.assigned_area_id) {
+                areaQuery = areaQuery.eq('id', session.assigned_area_id);
+            } else if (session.assigned_floor_id) {
+                areaQuery = areaQuery.eq('floor_id', session.assigned_floor_id);
+            } else {
+                const { data: floors } = await supabase.from('floors').select('id').eq('branch_id', selectedBranch.id);
+                const floorIds = floors?.map(f => f.id) || [];
+                if (floorIds.length > 0) {
+                    areaQuery = areaQuery.in('floor_id', floorIds);
+                } else {
+                    setAreas([]);
+                    return;
+                }
+            }
 
-                setAreas(areaData || []);
-                if (areaData?.length > 0 && !selectedArea) {
+            const { data: areaData } = await areaQuery.order('name');
+            setAreas(areaData || []);
+
+            if (areaData?.length > 0) {
+                if (session.assigned_area_id) {
+                    if (selectedArea?.id !== session.assigned_area_id) {
+                        setSelectedArea(areaData[0]);
+                    }
+                } else if (!selectedArea) {
                     setSelectedArea(areaData[0]);
                 }
-            } else {
-                setAreas([]);
             }
         } catch (error) {
             console.error("Error fetching areas", error);
@@ -172,27 +184,14 @@ export default function VolunteerDashboard() {
 
                 <main className="p-8">
                     {/* Area Selector */}
+                    {/* Area Display (Selection Removed) */}
                     <div className="bg-white rounded-xl p-6 border border-gray-100 mb-8 flex items-center justify-between">
                         <div>
                             <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                                 <MapPin className="w-5 h-5 text-blue-600" />
-                                Work Area
+                                {selectedArea?.name || 'Loading Area...'}
                             </h2>
-                            <p className="text-sm text-gray-500">Select the area you are monitoring</p>
-                        </div>
-                        <div className="flex items-center gap-2 overflow-x-auto max-w-2xl pb-2">
-                            {areas.map(area => (
-                                <button
-                                    key={area.id}
-                                    onClick={() => setSelectedArea(area)}
-                                    className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${selectedArea?.id === area.id
-                                            ? 'bg-[#00104A] text-white shadow-md'
-                                            : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
-                                        }`}
-                                >
-                                    {area.name}
-                                </button>
-                            ))}
+                            <p className="text-sm text-gray-500">Current Assigned Work Area</p>
                         </div>
                     </div>
 
