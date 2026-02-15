@@ -27,6 +27,7 @@ export default function Home() {
                 case 'volunteer':
                     navigate('/VolunteerDashboard');
                     break;
+
                 default:
                     navigate('/Home');
             }
@@ -39,25 +40,22 @@ export default function Home() {
         setIsLoading(true);
 
         try {
-            // Determine if input is email or username
-            // If username (no @), append domain or treat as username for custom auth
+            // First try with raw input (supports patron library_id login)
             let emailToUse = emailInput;
-            if (!emailInput.includes('@')) {
-                emailToUse = `${emailInput}@valtrack.com`;
-            }
 
-            const { data, error: authError } = await login(emailToUse, password);
+            let { data, error: authError } = await login(emailToUse, password);
+
+            // If raw input failed and it doesn't contain @, try with @valtrack.com suffix
+            if (authError && !emailInput.includes('@')) {
+                emailToUse = `${emailInput}@valtrack.com`;
+                const result = await login(emailToUse, password);
+                data = result.data;
+                authError = result.error;
+            }
 
             if (authError) {
                 console.error('Login error:', authError);
-                // Try with raw username if the email construction failed?
-                // The custom auth in AuthContext checks email field.
-                // If the user profile has "admin" as username but "admin@valtrack.com" as email,
-                // and they type "admin", emailToUse becomes "admin@valtrack.com".
-                // This matches the email field. Checks out.
                 setError('Invalid credentials or inactive account.');
-            } else {
-                // Success is handled by useEffect on isAuthenticated
             }
 
         } catch (err) {
@@ -135,7 +133,7 @@ export default function Home() {
 
                             <div>
                                 <label className="block text-sm font-medium mb-2" style={{ color: '#232323' }}>
-                                    Username or Email
+                                    Username, Email, or Library ID
                                 </label>
                                 <input
                                     type="text"
@@ -143,7 +141,7 @@ export default function Home() {
                                     onChange={(e) => setEmailInput(e.target.value)}
                                     className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:border-blue-400 transition-all"
                                     style={{ color: '#232323' }}
-                                    placeholder="Enter your username or email"
+                                    placeholder="Enter your username, email, or library ID"
                                     required
                                 />
                             </div>
