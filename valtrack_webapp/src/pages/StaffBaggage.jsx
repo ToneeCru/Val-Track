@@ -13,8 +13,11 @@ import {
     XCircle,
     Grid3X3,
     MapPin,
-    AlertCircle
+    AlertCircle,
+    Camera
 } from 'lucide-react';
+import { Scanner } from '@yudiel/react-qr-scanner';
+
 
 export default function StaffBaggage() {
     const navigate = useNavigate();
@@ -27,11 +30,12 @@ export default function StaffBaggage() {
     const [slots, setSlots] = useState([]);
 
     // Simulation / Active State
-    const [patrons, setPatrons] = useState([]); // Active patrons in this area to show in demo list
+
     const [isScanning, setIsScanning] = useState(false);
     const [scanResult, setScanResult] = useState(null);
     const [baggageHistory, setBaggageHistory] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [isCameraOpen, setIsCameraOpen] = useState(false);
 
     useEffect(() => {
         const sessionData = localStorage.getItem('valtrack_session');
@@ -61,7 +65,7 @@ export default function StaffBaggage() {
             fetchAreaDetails();
         } else {
             setSlots([]);
-            setPatrons([]);
+
         }
     }, [selectedArea]);
 
@@ -129,14 +133,7 @@ export default function StaffBaggage() {
                 .order('id');
             setSlots(baggageData || []);
 
-            // 2. Fetch Active Patrons in this Area (for demo buttons)
-            // Logic: Patrons currently CHECKED-IN to this area
-            const { data: attendanceData } = await supabase
-                .from('area_attendance')
-                .select('*')
-                .eq('area_id', selectedArea.id)
-                .eq('status', 'active');
-            setPatrons(attendanceData || []);
+
 
         } catch (error) {
             console.error('Error fetching area details:', error);
@@ -146,25 +143,17 @@ export default function StaffBaggage() {
         }
     };
 
-    const handleDemoScan = async (patron) => {
+    const processBaggageTransaction = async (patron) => {
         if (!selectedArea) return;
         setIsScanning(true);
         setScanResult(null);
 
         try {
-            // Check if patron already has baggage in THIS area?
-            // Or typically any baggage in this branch? 
-            // Usually baggage is associated with the Area they are in.
-
             // Check existing baggage record for this patron
             const { data: existingBaggage } = await supabase
                 .from('baggage')
                 .select('*')
-                .eq('patron_id', patron.patron_id) // Assuming patron_id is unique globally
-                // Should we enforce area_id? 
-                // If patron moved areas, they might have baggage elsewhere.
-                // But for simplified logic, let's assume valid baggage is in current area or check by ID.
-                // If we query by patron_id strictly, we find it.
+                .eq('patron_id', patron.patron_id)
                 .single();
 
             if (existingBaggage) {
@@ -256,6 +245,49 @@ export default function StaffBaggage() {
         }
     };
 
+    const handleScan = async (detectedCodes) => {
+        if (isScanning || !detectedCodes || detectedCodes.length === 0) return;
+
+        const scannedValue = detectedCodes[0].rawValue;
+        if (!scannedValue) return;
+
+        setIsScanning(true);
+        try {
+            // Find patron by library_id or id
+            const { data: patron, error } = await supabase
+                .from('patrons')
+                .select('*')
+                .or(`library_id.eq.${scannedValue},id.eq.${scannedValue}`)
+                .maybeSingle();
+
+            if (error) throw error;
+
+            if (!patron) {
+                toast.error('Patron not found');
+                setScanResult({
+                    type: 'error',
+                    message: 'Patron not found',
+                    patron: { name: 'Unknown', id: scannedValue }
+                });
+                setIsScanning(false);
+                return;
+            }
+
+            // Adapt patron object for baggage logic
+            const baggagePatron = {
+                patron_id: patron.id,
+                patron_name: `${patron.firstname} ${patron.surname}`
+            };
+
+            await processBaggageTransaction(baggagePatron);
+
+        } catch (err) {
+            console.error(err);
+            toast.error('Error finding patron');
+            setIsScanning(false);
+        }
+    };
+
     if (!session) return null;
 
     const availableCount = slots.filter(s => s.status === 'available').length;
@@ -335,61 +367,55 @@ export default function StaffBaggage() {
                                 </div>
                             )}
 
-                            {/* Quick Actions (Patrons in Area) */}
-                            <div className="bg-white rounded-xl border border-gray-100 p-6 mb-8">
-                                <div className="flex items-center gap-3 mb-6">
-                                    <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-                                        <Scan className="w-5 h-5 text-blue-500" />
+                            {/* Scanner Section */}
+                            <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
+                                <div className="flex items-center justify-between mb-6">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                                            <Camera className="w-5 h-5 text-blue-600" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-semibold text-gray-900">Scan Patron QR</h3>
+                                            <p className="text-sm text-gray-500">Scan to assign or release baggage</p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h3 className="font-semibold text-gray-900">Active Patrons in {selectedArea.name}</h3>
-                                        <p className="text-sm text-gray-500">Select a patron to assign/release baggage</p>
-                                    </div>
+                                    <button
+                                        onClick={() => setIsCameraOpen(!isCameraOpen)}
+                                        className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${isCameraOpen
+                                            ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                                            }`}
+                                    >
+                                        {isCameraOpen ? (
+                                            <>
+                                                <XCircle className="w-4 h-4" /> Close Camera
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Camera className="w-4 h-4" /> Open Camera
+                                            </>
+                                        )}
+                                    </button>
                                 </div>
 
-                                {patrons.length > 0 ? (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                        {patrons.map((patron) => {
-                                            const hasBaggage = slots.some(s => s.patron_id === patron.patron_id);
-                                            const mySlot = slots.find(s => s.patron_id === patron.patron_id);
-
-                                            return (
-                                                <button
-                                                    key={patron.id}
-                                                    onClick={() => handleDemoScan(patron)}
-                                                    disabled={isScanning}
-                                                    className={`p-4 rounded-xl border-2 text-left transition-all hover:shadow-md ${hasBaggage
-                                                        ? 'border-amber-200 bg-amber-50'
-                                                        : 'border-gray-200 bg-gray-50'
-                                                        } ${isScanning ? 'opacity-50' : ''}`}
-                                                >
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${hasBaggage ? 'bg-amber-100 text-amber-700' : 'bg-gray-200 text-gray-600'
-                                                                }`}>
-                                                                {patron.patron_name.charAt(0)}
-                                                            </div>
-                                                            <span className="font-medium text-gray-900 truncate max-w-[120px]">{patron.patron_name}</span>
-                                                        </div>
-                                                        {hasBaggage && (
-                                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">
-                                                                {mySlot?.id}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex justify-between items-center mt-2">
-                                                        <span className="text-xs text-gray-500 font-mono">{patron.patron_id}</span>
-                                                        <span className={`text-[10px] font-bold uppercase ${hasBaggage ? 'text-amber-600' : 'text-blue-600'}`}>
-                                                            {hasBaggage ? 'Click to Return' : 'Click to Store'}
-                                                        </span>
-                                                    </div>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-8 text-gray-400">
-                                        No patrons currently checked in to this area.
+                                {isCameraOpen && (
+                                    <div className="max-w-md mx-auto overflow-hidden rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 mb-4 relative">
+                                        <div className="aspect-square relative">
+                                            <Scanner
+                                                onScan={(result) => result && result.length > 0 && handleScan(result)}
+                                                onError={(error) => console.log(error?.message)}
+                                                styles={{
+                                                    container: { width: '100%', height: '100%' },
+                                                    video: { width: '100%', height: '100%', objectFit: 'cover' }
+                                                }}
+                                                components={{
+                                                    audio: false,
+                                                    torch: false,
+                                                    finder: true
+                                                }}
+                                            />
+                                        </div>
+                                        <p className="text-center text-xs text-gray-500 py-2">Point camera at QR code</p>
                                     </div>
                                 )}
                             </div>

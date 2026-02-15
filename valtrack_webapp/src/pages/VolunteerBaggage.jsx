@@ -10,8 +10,11 @@ import {
     XCircle,
     Grid3X3,
     MapPin,
-    AlertCircle
+    AlertCircle,
+    Camera
 } from 'lucide-react';
+import { Scanner } from '@yudiel/react-qr-scanner';
+
 import { supabase } from '../lib/supabase';
 import { useBranch } from '../context/BranchContext';
 import { toast } from 'sonner';
@@ -25,13 +28,14 @@ export default function VolunteerBaggage() {
     const [selectedArea, setSelectedArea] = useState(null);
 
     // Baggage & Patrons State
-    const [patrons, setPatrons] = useState([]); // Simulated or fetched partial demo list
+
     const [allBaggage, setAllBaggage] = useState([]); // Baggage items in current area
 
     const [scanResult, setScanResult] = useState(null);
     const [isScanning, setIsScanning] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [baggageHistory, setBaggageHistory] = useState([]);
+    const [isCameraOpen, setIsCameraOpen] = useState(false);
 
     useEffect(() => {
         const sessionData = localStorage.getItem('valtrack_session');
@@ -116,20 +120,7 @@ export default function VolunteerBaggage() {
             if (baggageError) throw baggageError;
             setAllBaggage(baggageData || []);
 
-            // Fetch Active Patrons in this Area (for simulation buttons)
-            const { data: attendanceData } = await supabase
-                .from('area_attendance')
-                .select('*')
-                .eq('area_id', selectedArea.id)
-                .eq('status', 'active');
 
-            // Map attendance to simulated patrons list or use attendance directly
-            // For demo purposes, we can use the patrons from attendance
-            const patronList = attendanceData?.map(a => ({
-                patron_id: a.patron_id,
-                patron_name: a.patron_name
-            })) || [];
-            setPatrons(patronList);
 
             // Fetch Recent Baggage Logs (Global or Branch)
             const { data: logData } = await supabase
@@ -156,7 +147,7 @@ export default function VolunteerBaggage() {
         return `${prefix}-${randomNum}`;
     };
 
-    const handleDemoScan = async (patron) => {
+    const processBaggageTransaction = async (patron) => {
         if (!selectedArea) return;
 
         setIsScanning(true);
@@ -168,12 +159,6 @@ export default function VolunteerBaggage() {
 
             if (existingBaggage) {
                 // CHECK-OUT
-                // Logic: Mark as returned or delete row depending on policy.
-                // Assuming 'baggage' table rows are persistent with status 'returned' or we delete them?
-                // `slots` table approach was Update status 'available'.
-                // `baggage` table approach is usually Insert new item, Update when returned.
-                // Let's assume Update status to 'returned'.
-
                 const { error: updateError } = await supabase
                     .from('baggage')
                     .update({
@@ -202,13 +187,12 @@ export default function VolunteerBaggage() {
                 toast.success('Baggage checked out');
             } else {
                 // CHECK-IN
-                // Logic: Insert new baggage record
-                const newId = generateBaggageId(); // Or scan locker QR
+                const newId = generateBaggageId();
 
                 const { error: insertError } = await supabase
                     .from('baggage')
                     .insert({
-                        id: newId, // If ID is manual/scanned. If auto-increment, omit. Assuming text ID.
+                        id: newId,
                         area_id: selectedArea.id,
                         patron_name: patron.patron_name,
                         patron_id: patron.patron_id,
@@ -242,6 +226,48 @@ export default function VolunteerBaggage() {
             console.error('Baggage operation error:', error);
             toast.error('Failed to process baggage');
         } finally {
+            setIsScanning(false);
+        }
+    };
+
+    const handleScan = async (detectedCodes) => {
+        if (isScanning || !detectedCodes || detectedCodes.length === 0) return;
+
+        const scannedValue = detectedCodes[0].rawValue;
+        if (!scannedValue) return;
+
+        setIsScanning(true);
+        try {
+            // Find patron by library_id or id
+            const { data: patron, error } = await supabase
+                .from('patrons')
+                .select('*')
+                .or(`library_id.eq.${scannedValue},id.eq.${scannedValue}`)
+                .maybeSingle();
+
+            if (error) throw error;
+
+            if (!patron) {
+                toast.error('Patron not found');
+                setScanResult({
+                    type: 'error',
+                    message: 'Patron not found',
+                    patron: { name: 'Unknown', id: scannedValue }
+                });
+                setIsScanning(false);
+                return;
+            }
+
+            const baggagePatron = {
+                patron_id: patron.id,
+                patron_name: `${patron.firstname} ${patron.surname}`
+            };
+
+            await processBaggageTransaction(baggagePatron);
+
+        } catch (err) {
+            console.error(err);
+            toast.error('Error finding patron');
             setIsScanning(false);
         }
     };
@@ -325,60 +351,57 @@ export default function VolunteerBaggage() {
                                 </div>
                             )}
 
-                            {/* QR Code Simulation */}
-                            <div className="bg-white rounded-xl border border-gray-100 p-6 mb-8">
-                                <div className="flex items-center gap-3 mb-6">
-                                    <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-                                        <QrCode className="w-5 h-5 text-blue-600" />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-semibold text-gray-900">QR Code Scanner - Baggage</h3>
-                                        <p className="text-sm text-gray-500">
-                                            Scan patron QR to Check-In/Out items in {selectedArea?.name || '...'}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                                    {patrons.length > 0 ? patrons.map((patron) => {
-                                        const hasBaggage = allBaggage.some(b => b.patron_id === patron.patron_id && b.status === 'occupied');
-                                        const patronBaggage = allBaggage.find(b => b.patron_id === patron.patron_id && b.status === 'occupied');
-
-                                        return (
-                                            <button
-                                                key={patron.patron_id}
-                                                onClick={() => handleDemoScan(patron)}
-                                                disabled={isScanning || !selectedArea}
-                                                className={`p-4 rounded-xl border-2 text-center transition-all hover:shadow-lg hover:scale-105 ${hasBaggage
-                                                    ? 'border-amber-400 bg-amber-50'
-                                                    : 'border-gray-200 hover:border-blue-400 bg-white'
-                                                    } ${isScanning || !selectedArea ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                                            >
-                                                <div
-                                                    className={`w-16 h-16 mx-auto mb-3 rounded-lg flex items-center justify-center ${hasBaggage ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400'
-                                                        }`}
-                                                >
-                                                    <QrCode className="w-10 h-10" />
-                                                </div>
-                                                <p className="text-xs font-bold text-gray-900 mb-1 truncate">{patron.patron_name}</p>
-                                                <p className="text-[10px] text-gray-500 mb-2">{patron.patron_id}</p>
-                                                {hasBaggage ? (
-                                                    <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-800">
-                                                        {patronBaggage.id}
-                                                    </span>
-                                                ) : (
-                                                    <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-500">
-                                                        NO ITEMS
-                                                    </span>
-                                                )}
-                                            </button>
-                                        );
-                                    }) : (
-                                        <div className="col-span-full py-8 text-center text-gray-400 italic">
-                                            No active patrons in this area to scan.
+                            {/* Scanner Section */}
+                            <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
+                                <div className="flex items-center justify-between mb-6">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                                            <Camera className="w-5 h-5 text-blue-600" />
                                         </div>
-                                    )}
+                                        <div>
+                                            <h3 className="font-semibold text-gray-900">Scan Patron QR</h3>
+                                            <p className="text-sm text-gray-500">Scan to assign or release baggage</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => setIsCameraOpen(!isCameraOpen)}
+                                        className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${isCameraOpen
+                                            ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                                            }`}
+                                    >
+                                        {isCameraOpen ? (
+                                            <>
+                                                <XCircle className="w-4 h-4" /> Close Camera
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Camera className="w-4 h-4" /> Open Camera
+                                            </>
+                                        )}
+                                    </button>
                                 </div>
+
+                                {isCameraOpen && (
+                                    <div className="max-w-md mx-auto overflow-hidden rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 mb-4 relative">
+                                        <div className="aspect-square relative">
+                                            <Scanner
+                                                onScan={(result) => result && result.length > 0 && handleScan(result)}
+                                                onError={(error) => console.log(error?.message)}
+                                                styles={{
+                                                    container: { width: '100%', height: '100%' },
+                                                    video: { width: '100%', height: '100%', objectFit: 'cover' }
+                                                }}
+                                                components={{
+                                                    audio: false,
+                                                    torch: false,
+                                                    finder: true
+                                                }}
+                                            />
+                                        </div>
+                                        <p className="text-center text-xs text-gray-500 py-2">Point camera at QR code</p>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Baggage List / History */}
