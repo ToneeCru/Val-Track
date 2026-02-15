@@ -19,6 +19,7 @@ import {
   View,
 } from 'react-native';
 import { Dropdown } from 'react-native-element-dropdown';
+import { Ionicons } from '@expo/vector-icons';
 import KYCCamera from '../../../components/KYCCamera';
 import * as AddressService from '../../../lib/addressService';
 import { extractDataFromOCR } from '../../../lib/extractorService';
@@ -196,9 +197,10 @@ export default function SignUp({ onCancel, onComplete }: SignUpProps) {
   const [firstName, setFirstName] = useState<string>('');
   const [middleName, setMiddleName] = useState<string>('');
   const [lastName, setLastName] = useState<string>('');
-  const [dob, setDob] = useState<string>('');
+  const [gender, setGender] = useState<string>(''); const [dob, setDob] = useState<string>('');
   const [dobDate, setDobDate] = useState<Date>(new Date(2000, 0, 1)); // Default date
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
+  const [genderModalVisible, setGenderModalVisible] = useState(false);
   const [idNumber, setIdNumber] = useState<string>('');
   const [email, setEmail] = useState<string>('');
 
@@ -207,6 +209,23 @@ export default function SignUp({ onCancel, onComplete }: SignUpProps) {
   const [otpSent, setOtpSent] = useState<boolean>(false);
   const [timer, setTimer] = useState<number>(0);
   const otpInputs = React.useRef<any[]>([]);
+
+  // Step 6: Password Creation
+  const [password, setPassword] = useState<string>('');
+  const [confirmPassword, setConfirmPassword] = useState<string>('');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState<boolean>(false);
+  const [passwordMismatchError, setPasswordMismatchError] = useState<boolean>(false);
+
+  // Password validation helper function
+  const isPasswordSecure = (pwd: string) => {
+    return {
+      minLength: pwd.length >= 8,
+      hasUppercase: /[A-Z]/.test(pwd),
+      hasNumber: /[0-9]/.test(pwd),
+      hasSpecial: /[!@#$%^&*(),.?":{}|<>]/.test(pwd),
+    };
+  };
 
 
   // Step 3 Consolidated State
@@ -365,6 +384,7 @@ export default function SignUp({ onCancel, onComplete }: SignUpProps) {
           surname: lastName,
           middlename: middleName,
           dateofbirth: dob,
+          gender: gender,
           id_number: idNumber,
         }).then(() => {
           setIsLoading(false);
@@ -471,6 +491,8 @@ export default function SignUp({ onCancel, onComplete }: SignUpProps) {
 
     setIsLoading(true);
     try {
+      // We need to verify the OTP is correct, but verifyOtp creates a session
+      // So we'll verify it, then immediately sign out before any redirect can happen
       const { error: authError } = await supabase.auth.verifyOtp({
         email,
         token: fullOtp,
@@ -479,6 +501,10 @@ export default function SignUp({ onCancel, onComplete }: SignUpProps) {
 
       if (authError) throw authError;
 
+      // Critical: Sign out IMMEDIATELY before any state changes
+      await supabase.auth.signOut();
+
+      // Update pending registration to mark email as verified
       if (registrationId) {
         await updatePendingRegistration(registrationId, {
           email: email,
@@ -486,25 +512,15 @@ export default function SignUp({ onCancel, onComplete }: SignUpProps) {
         });
       }
 
-      // Sign out the user to prevent auto-login
-      await supabase.auth.signOut();
-
-      if (onComplete) onComplete({ email, registrationId });
-      Alert.alert('Success', 'Registration Complete!', [
-        {
-          text: 'OK',
-          onPress: () => {
-            if (onCancel) onCancel(); // Close the signup modal/screen
-            router.replace('/'); // Go back to login screen
-          }
-        }
-      ], { cancelable: false });
+      // Now proceed to Step 6 - user is NOT logged in
+      setIsLoading(false);
+      setStep(6);
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Verification failed');
-    } finally {
       setIsLoading(false);
     }
   };
+
 
   React.useEffect(() => {
     let interval: any;
@@ -542,6 +558,230 @@ export default function SignUp({ onCancel, onComplete }: SignUpProps) {
     }
   };
 
+  // Password validation criteria
+  const passwordCriteria = isPasswordSecure(password);
+
+  const allCriteriaMet = Object.values(passwordCriteria).every(Boolean);
+  const passwordsMatch = password === confirmPassword && password.length > 0;
+  const canFinishRegistration = allCriteriaMet && passwordsMatch;
+
+  const finalSubmit = async () => {
+    // Reset error state
+    setPasswordMismatchError(false);
+
+    // Validate passwords match
+    if (password !== confirmPassword) {
+      setPasswordMismatchError(true);
+      return;
+    }
+
+    if (!canFinishRegistration) {
+      Alert.alert('Validation', 'Please ensure all password requirements are met.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // 1. Fetch the complete pending registration data
+      const { data: pendingData, error: fetchError } = await supabase
+        .from('pending_registrations')
+        .select('*')
+        .eq('id', registrationId)
+        .single();
+
+      if (fetchError || !pendingData) {
+        throw new Error('Failed to fetch registration data');
+      }
+
+      // 2. Validate all required fields are present
+      if (!pendingData.firstname || !pendingData.surname || !pendingData.dateofbirth ||
+        !pendingData.address || !pendingData.city || !pendingData.email ||
+        !pendingData.id_type || !pendingData.id_number || !pendingData.id_image_path ||
+        !pendingData.selfie_with_id_path) {
+        throw new Error('Incomplete registration data. Please complete all steps.');
+      }
+
+      // 3. Generate library_id in format YY-XXXXX
+      const currentYear = new Date().getFullYear().toString().slice(-2); // Get last 2 digits of year
+
+      // Get the count of existing patrons to generate the next number
+      const { count, error: countError } = await supabase
+        .from('patrons')
+        .select('*', { count: 'exact', head: true });
+
+      if (countError) throw countError;
+
+      const patronNumber = ((count || 0) + 1).toString().padStart(5, '0');
+      const libraryId = `${currentYear}-${patronNumber}`;
+
+      // 4. Insert into patrons table
+      const { data: patronData, error: patronError } = await supabase
+        .from('patrons')
+        .insert({
+          surname: pendingData.surname,
+          firstname: pendingData.firstname,
+          middlename: pendingData.middlename || null,
+          dateofbirth: pendingData.dateofbirth,
+          address: pendingData.address,
+          city: pendingData.city,
+          email: pendingData.email,
+          gender: pendingData.gender || null,
+          password: password,
+          library_id: libraryId,
+          profile_photo_path: null,
+          qr_code_path: null,
+          account_status: 'active',
+        })
+        .select()
+        .single();
+
+      if (patronError) throw patronError;
+
+      // 5. Move files from 'pending' to 'verified' folder in storage
+      let verifiedIdPath = pendingData.id_image_path;
+      let verifiedSelfiePath = pendingData.selfie_with_id_path;
+
+      // Move ID image from pending to verified
+      if (pendingData.id_image_path) {
+        const idFileName = pendingData.id_image_path.split('/').pop();
+        const newIdPath = `verified/${idFileName}`;
+
+        // Download from pending
+        const { data: idData, error: idDownloadError } = await supabase.storage
+          .from('id_uploads')
+          .download(pendingData.id_image_path);
+
+        if (!idDownloadError && idData) {
+          // Upload to verified folder
+          const { error: idUploadError } = await supabase.storage
+            .from('id_uploads')
+            .upload(newIdPath, idData, { upsert: true });
+
+          if (!idUploadError) {
+            // Delete from pending folder
+            await supabase.storage
+              .from('id_uploads')
+              .remove([pendingData.id_image_path]);
+
+            verifiedIdPath = newIdPath;
+          }
+        }
+      }
+
+      // Move selfie from pending to verified
+      if (pendingData.selfie_with_id_path) {
+        const selfieFileName = pendingData.selfie_with_id_path.split('/').pop();
+        const newSelfiePath = `verified/${selfieFileName}`;
+
+        // Download from pending
+        const { data: selfieData, error: selfieDownloadError } = await supabase.storage
+          .from('selfie_uploads')
+          .download(pendingData.selfie_with_id_path);
+
+        if (!selfieDownloadError && selfieData) {
+          // Upload to verified folder
+          const { error: selfieUploadError } = await supabase.storage
+            .from('selfie_uploads')
+            .upload(newSelfiePath, selfieData, { upsert: true });
+
+          if (!selfieUploadError) {
+            // Delete from pending folder
+            await supabase.storage
+              .from('selfie_uploads')
+              .remove([pendingData.selfie_with_id_path]);
+
+            verifiedSelfiePath = newSelfiePath;
+          }
+        }
+      }
+
+      // 6. Insert into patron_documents table with verified paths
+      const { error: documentError } = await supabase
+        .from('patron_documents')
+        .insert({
+          patron_id: patronData.id,
+          id_type: pendingData.id_type,
+          id_number: pendingData.id_number,
+          id_image_path: verifiedIdPath,
+          selfie_with_id_path: verifiedSelfiePath,
+        });
+
+      if (documentError) throw documentError;
+
+      // 7. Delete from pending_registrations
+
+      const { error: deleteError } = await supabase
+        .from('pending_registrations')
+        .delete()
+        .eq('id', registrationId);
+
+      if (deleteError) {
+        console.error('Warning: Failed to delete pending registration:', deleteError);
+        // Don't throw - registration is complete even if cleanup fails
+      }
+
+      // 7. Sign out from temporary OTP session
+      await supabase.auth.signOut();
+
+      // 8. Cleanup: Clear all registration state
+      setStep(1);
+      setIdType('');
+      setIdDocument('');
+      setRegistrationId(null);
+      setFirstName('');
+      setMiddleName('');
+      setLastName('');
+      setGender('');
+      setDob('');
+      setIdNumber('');
+      setEmail('');
+      setPassword('');
+      setConfirmPassword('');
+      setOtp(['', '', '', '', '', '']);
+      setOtpSent(false);
+      setSelfieUri(null);
+      setAddressData({
+        region: '',
+        regionCode: '',
+        province: '',
+        provinceCode: '',
+        city: '',
+        cityCode: '',
+        barangay: '',
+        barangayCode: '',
+        street: '',
+      });
+
+      setIsLoading(false);
+
+      // 9. Success Alert with navigation
+      Alert.alert(
+        'Account Secured!',
+        `Welcome to Val-Track! Your Library ID is ${libraryId}. Please log in to continue.`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              if (onCancel) onCancel();
+              router.replace('/');
+            }
+          }
+        ],
+        { cancelable: false }
+      );
+
+      if (onComplete) onComplete({ email, registrationId, libraryId });
+    } catch (error: any) {
+      console.error('Error completing registration:', error);
+      setIsLoading(false);
+      Alert.alert('Error', error.message || 'Failed to complete registration. Please try again.');
+    }
+  };
+
+
+
+
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -552,7 +792,7 @@ export default function SignUp({ onCancel, onComplete }: SignUpProps) {
           <TouchableOpacity onPress={back} style={styles.backButton}>
             <Text style={styles.backText}>{'<'} Back</Text>
           </TouchableOpacity>
-          <Text style={styles.stepLabel}>Sign Up ( Step {step} of 5)</Text>
+          <Text style={styles.stepLabel}>Sign Up ( Step {step} of 6)</Text>
         </View>
 
         {step === 1 && (
@@ -671,6 +911,44 @@ export default function SignUp({ onCancel, onComplete }: SignUpProps) {
 
             <Text style={styles.fieldLabel}>Last Name</Text>
             <TextInput style={styles.input} value={lastName} onChangeText={setLastName} placeholder="Last Name" />
+
+            <Text style={styles.fieldLabel}>Gender</Text>
+            <TouchableOpacity
+              style={styles.picker}
+              onPress={() => setGenderModalVisible(true)}
+            >
+              <Text style={styles.pickerText}>
+                {gender || 'Select Gender'}
+              </Text>
+              <Text style={styles.pickerIcon}>▼</Text>
+            </TouchableOpacity>
+
+            <Modal
+              transparent={true}
+              visible={genderModalVisible}
+              onRequestClose={() => setGenderModalVisible(false)}
+            >
+              <TouchableOpacity
+                style={styles.modalOverlay}
+                activeOpacity={1}
+                onPressOut={() => setGenderModalVisible(false)}
+              >
+                <View style={styles.modalContent}>
+                  {['male', 'female', 'prefer not to say'].map((option) => (
+                    <TouchableOpacity
+                      key={option}
+                      style={styles.modalOption}
+                      onPress={() => {
+                        setGender(option);
+                        setGenderModalVisible(false);
+                      }}
+                    >
+                      <Text style={styles.modalOptionText}>{option.charAt(0).toUpperCase() + option.slice(1)}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </TouchableOpacity>
+            </Modal>
 
             <Text style={styles.fieldLabel}>Date of Birth</Text>
             <TouchableOpacity
@@ -927,8 +1205,121 @@ export default function SignUp({ onCancel, onComplete }: SignUpProps) {
             )}
           </View>
         )}
+
+        {step === 6 && (
+          <View style={styles.card}>
+            <Text style={styles.title}>Create Password</Text>
+            <Text style={styles.help}>Create a secure password for your account.</Text>
+
+            <Text style={styles.fieldLabel}>Password</Text>
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={styles.passwordInput}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Enter password"
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                style={styles.eyeIcon}
+                onPress={() => setShowPassword(!showPassword)}
+              >
+                <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={22} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.fieldLabel}>Confirm Password</Text>
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={styles.passwordInput}
+                value={confirmPassword}
+                onChangeText={(text) => {
+                  setConfirmPassword(text);
+                  setPasswordMismatchError(false);
+                }}
+                placeholder="Confirm password"
+
+                secureTextEntry={!showConfirmPassword}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                style={styles.eyeIcon}
+                onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+              >
+                <Ionicons name={showConfirmPassword ? 'eye-off' : 'eye'} size={22} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Password Mismatch Error */}
+            {passwordMismatchError && (
+              <Text style={styles.errorText}>Passwords do not match.</Text>
+            )}
+
+            {/* Validation Checklist */}
+            <View style={styles.validationContainer}>
+
+              <Text style={styles.validationTitle}>Password Requirements:</Text>
+
+              <View style={styles.criteriaRow}>
+                <Text style={passwordCriteria.minLength ? styles.criteriaTextValid : styles.criteriaTextInvalid}>
+                  {passwordCriteria.minLength ? '✓' : '○'} At least 8 characters
+                </Text>
+              </View>
+
+              <View style={styles.criteriaRow}>
+                <Text style={passwordCriteria.hasUppercase ? styles.criteriaTextValid : styles.criteriaTextInvalid}>
+                  {passwordCriteria.hasUppercase ? '✓' : '○'} At least one uppercase letter
+                </Text>
+              </View>
+
+              <View style={styles.criteriaRow}>
+                <Text style={passwordCriteria.hasNumber ? styles.criteriaTextValid : styles.criteriaTextInvalid}>
+                  {passwordCriteria.hasNumber ? '✓' : '○'} At least one number
+                </Text>
+              </View>
+
+              <View style={styles.criteriaRow}>
+                <Text style={passwordCriteria.hasSpecial ? styles.criteriaTextValid : styles.criteriaTextInvalid}>
+                  {passwordCriteria.hasSpecial ? '✓' : '○'} At least one special character (!@#$%^&*)
+                </Text>
+              </View>
+
+              {confirmPassword.length > 0 && (
+                <View style={styles.criteriaRow}>
+                  <Text style={passwordsMatch ? styles.criteriaTextValid : styles.criteriaTextInvalid}>
+                    {passwordsMatch ? '✓' : '○'} Passwords match
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.primaryButton, !canFinishRegistration && styles.primaryButtonDisabled]}
+              onPress={finalSubmit}
+              disabled={!canFinishRegistration || isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Finish Registration</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
-    </KeyboardAvoidingView>
+
+      {/* Full-Screen Loading Overlay */}
+      {isLoading && step === 6 && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#001a4d" />
+            <Text style={styles.loadingText}>Securing your account...</Text>
+            <Text style={styles.loadingSubtext}>Please wait, do not close this screen</Text>
+          </View>
+        </View>
+      )}
+    </KeyboardAvoidingView >
   );
 }
 
@@ -1222,6 +1613,102 @@ const styles = StyleSheet.create({
   dropdownSelectedText: {
     fontSize: 15,
     color: '#333',
+  },
+  errorText: {
+    color: '#FF2B2B',
+    fontSize: 14,
+    marginBottom: 12,
+    fontWeight: '600',
+  },
+  passwordContainer: {
+
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    marginBottom: 12,
+    paddingRight: 12,
+  },
+  passwordInput: {
+    flex: 1,
+    height: 50,
+    paddingHorizontal: 12,
+    fontSize: 15,
+    color: '#333',
+  },
+  eyeIcon: {
+    padding: 8,
+  },
+  eyeIconText: {
+    fontSize: 20,
+  },
+  validationContainer: {
+    backgroundColor: '#f9f9f9',
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  validationTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 12,
+  },
+  criteriaRow: {
+    marginBottom: 8,
+  },
+  criteriaTextValid: {
+    fontSize: 14,
+    color: '#4CAF50',
+    fontWeight: '600',
+  },
+  criteriaTextInvalid: {
+    fontSize: 14,
+    color: '#999',
+  },
+  primaryButtonDisabled: {
+    opacity: 0.5,
+    backgroundColor: '#999',
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  loadingContainer: {
+    backgroundColor: '#fff',
+    padding: 30,
+    borderRadius: 16,
+    alignItems: 'center',
+    minWidth: 250,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#001a4d',
+    textAlign: 'center',
+  },
+  loadingSubtext: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
   },
 });
 const otpStyles = StyleSheet.create({

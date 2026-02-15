@@ -27,17 +27,10 @@ export default function Index() {
 
     checkSession();
 
-    // Listen for auth state changes
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session?.user && session.user.email_confirmed_at) {
-        router.replace('/Patron/Home/Dashboard' as any);
-      }
-    });
-
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
+    // Note: Removed onAuthStateChange listener to prevent auto-redirect during registration
+    // Users must complete the full registration flow including password creation
   }, []);
+
 
   if (!isReady) return null;
 

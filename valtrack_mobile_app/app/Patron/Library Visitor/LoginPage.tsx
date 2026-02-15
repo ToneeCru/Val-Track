@@ -16,13 +16,11 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { supabase } from '../../../lib/supabase';
 
 const valtrackLogo = require('../../assets/images/loginPageLogo.png');
 
-const TEST_CREDENTIALS = {
-  userId: '23-2970',
-  password: 'admin123',
-};
+
 
 const { height } = Dimensions.get('window');
 
@@ -43,37 +41,66 @@ export default function LoginPage({
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!userId.trim() || !password.trim()) {
-      Alert.alert('Validation Error', 'Please enter both Library ID and password');
+      Alert.alert('Validation Error', 'Please enter both Library ID/Email and password');
       return;
     }
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      // Check if input is email or library ID
+      const isEmail = userId.includes('@');
 
-      const isValid =
-        userId === TEST_CREDENTIALS.userId &&
-        password === TEST_CREDENTIALS.password;
+      let query = supabase
+        .from('patrons')
+        .select('*')
+        .eq('password', password);
 
-      if (isValid) {
-        setUserId('');
-        setPassword('');
-        router.replace('/Patron/Home/Dashboard');
+      if (isEmail) {
+        query = query.eq('email', userId.trim());
+      } else {
+        query = query.eq('library_id', userId.trim());
+      }
+
+      const { data, error } = await query.single();
+
+      if (error || !data) {
+        setIsLoading(false);
+        Alert.alert(
+          'Login Failed',
+          'Invalid credentials. Please check your Library ID/Email and password.'
+        );
         return;
       }
 
-      Alert.alert(
-        'Login Failed',
-        'Invalid credentials.\n\nTest Account:\n23-2970 / admin123'
-      );
+      // Check account status
+      if (data.account_status !== 'active') {
+        setIsLoading(false);
+        Alert.alert(
+          'Account Inactive',
+          'Your account is not active. Please contact the library administrator.'
+        );
+        return;
+      }
+
+      // Successful login
+      setIsLoading(false);
+      setUserId('');
+      setPassword('');
 
       if (onLoginSuccess) {
         onLoginSuccess({ userId, password });
       }
-    }, 1500);
+
+      // Navigate to dashboard
+      router.replace('/Patron/Home/Dashboard');
+    } catch (error: any) {
+      setIsLoading(false);
+      console.error('Login error:', error);
+      Alert.alert('Error', 'An error occurred during login. Please try again.');
+    }
   };
 
   const handleSignUp = () => {
