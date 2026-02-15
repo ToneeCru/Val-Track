@@ -789,11 +789,7 @@ export default function SignUp({ onCancel, onComplete }: SignUpProps) {
               onPress={next}
               disabled={isLoading}
             >
-              <Text style={styles.primaryButtonText}>{isLoading ? 'Saving...' : 'Continue'}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <Text style={styles.primaryButtonText}>{isLoading ? 'Saving...' : 'Next'}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -819,6 +815,16 @@ export default function SignUp({ onCancel, onComplete }: SignUpProps) {
               <Text style={styles.primaryButtonText}>{selfieUri ? 'Retake Selfie' : 'Take Selfie'}</Text>
             </TouchableOpacity>
 
+            {selfieUri && (
+              <TouchableOpacity
+                style={[styles.primaryButton, { marginTop: 15 }]}
+                onPress={next}
+                disabled={isLoading}
+              >
+                <Text style={styles.primaryButtonText}>Next</Text>
+              </TouchableOpacity>
+            )}
+
             <Modal visible={showCamera} animationType="slide">
               <KYCCamera
                 registrationId={registrationId || ''}
@@ -830,20 +836,6 @@ export default function SignUp({ onCancel, onComplete }: SignUpProps) {
                 onCancel={() => setShowCamera(false)}
               />
             </Modal>
-
-            <View style={styles.rowButtons}>
-              <TouchableOpacity style={styles.cancelOutline} onPress={onCancel}>
-                <Text style={styles.cancelOutlineText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.primaryButton, (!selfieUri || isLoading) && { opacity: 0.5 }, { flex: 1, marginLeft: 10 }]}
-                onPress={next}
-                disabled={!selfieUri || isLoading}
-              >
-                <Text style={styles.primaryButtonText}>Next</Text>
-              </TouchableOpacity>
-            </View>
           </View>
         )}
 
