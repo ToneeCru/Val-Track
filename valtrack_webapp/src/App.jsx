@@ -7,8 +7,7 @@ import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-route
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegistered';
-import PageTransition from './components/PageTransition';
-import { AnimatePresence } from 'framer-motion';
+
 import { BranchProvider } from './context/BranchContext';
 
 const { Pages, Layout, mainPage } = pagesConfig;
@@ -43,16 +42,12 @@ const AuthenticatedApp = () => {
         }
     }
 
-    // Render the main app with transitions
+    // Render the main app
     return (
-        <Routes location={location}>
+        <Routes>
             <Route path="/" element={
                 <LayoutWrapper currentPageName={mainPageKey}>
-                    <AnimatePresence mode="wait">
-                        <PageTransition key={mainPageKey}>
-                            <MainPage />
-                        </PageTransition>
-                    </AnimatePresence>
+                    <MainPage />
                 </LayoutWrapper>
             } />
             {Object.entries(Pages).map(([path, Page]) => (
@@ -61,11 +56,7 @@ const AuthenticatedApp = () => {
                     path={`/${path}`}
                     element={
                         <LayoutWrapper currentPageName={path}>
-                            <AnimatePresence mode="wait">
-                                <PageTransition key={path}>
-                                    <Page />
-                                </PageTransition>
-                            </AnimatePresence>
+                            <Page />
                         </LayoutWrapper>
                     }
                 />
