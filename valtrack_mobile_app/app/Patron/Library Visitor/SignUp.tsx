@@ -17,7 +17,9 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Dropdown } from 'react-native-element-dropdown';
 import KYCCamera from '../../../components/KYCCamera';
 import * as AddressService from '../../../lib/addressService';
@@ -25,6 +27,7 @@ import { extractDataFromOCR } from '../../../lib/extractorService';
 import { processOCR } from '../../../lib/ocrService';
 import { createPendingRegistration, updatePendingRegistration, uploadIDToSupabase, uploadSelfie } from '../../../lib/storage';
 import { supabase } from '../../../lib/supabase';
+import { Ionicons } from '@expo/vector-icons';
 
 const { width, height } = Dimensions.get('window');
 
@@ -543,676 +546,602 @@ export default function SignUp({ onCancel, onComplete }: SignUpProps) {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={styles.headerRow}>
-          <TouchableOpacity onPress={back} style={styles.backButton}>
-            <Text style={styles.backText}>{'<'} Back</Text>
-          </TouchableOpacity>
-          <Text style={styles.stepLabel}>Sign Up ( Step {step} of 5)</Text>
-        </View>
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
 
-        {step === 1 && (
-          <View style={styles.card}>
-            <Text style={styles.title}>Identity Verification</Text>
-            <Text style={styles.help}>To get started, please select your ID type and upload your document</Text>
+      {/* Background Image */}
+      <Image
+        source={require('../../assets/images/login-bg.png')}
+        style={styles.backgroundImage}
+        resizeMode="cover"
+      />
+      <View style={styles.overlay} />
 
-            {ocrScanning && (
-              <View style={styles.ocrStatus}>
-                <ActivityIndicator size="small" color="#001a4d" />
-                <Text style={styles.ocrText}> Scanning ID... Please wait.</Text>
-              </View>
-            )}
-
-            <Text style={styles.fieldLabel}>Select ID Type</Text>
-            <TouchableOpacity
-              style={styles.picker}
-              onPress={() => setIdTypeModalVisible(true)}
-            >
-              <Text style={styles.pickerText}>
-                {idType ? ID_TYPE_LABELS[idType as IDType] : 'Choose your identification document'}
-              </Text>
-              <Text style={styles.pickerIcon}>▼</Text>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          {/* Header Section */}
+          <View style={styles.headerSection}>
+            {/* Back Button */}
+            <TouchableOpacity onPress={back} style={styles.headerBackButton}>
+              <Ionicons name="chevron-back" size={28} color="#FFFFFF" />
             </TouchableOpacity>
 
-            {autofillMessage && (
-              <View style={styles.autofillBanner}>
-                <Text style={styles.autofillText}>{autofillMessage}</Text>
-              </View>
-            )}
-
-            <Modal
-              transparent={true}
-              visible={ocrWarningVisible}
-              onRequestClose={() => setOcrWarningVisible(false)}
-            >
-              <View style={styles.modalOverlay}>
-                <View style={styles.modalContent}>
-                  <Text style={styles.modalTitle}>❌ Verification Failed</Text>
-                  <Text style={styles.modalText}>
-                    The uploaded image does not match a {idType ? ID_TYPE_LABELS[idType as IDType] : 'valid ID'}. Please retake the photo and ensure it is clear.
-                  </Text>
-                  <View style={styles.modalButtons}>
-                    <TouchableOpacity style={[styles.primaryButtonModal, { width: '100%' }]} onPress={() => {
-                      setOcrWarningVisible(false);
-                      pickImage(); // Retake
-                    }}>
-                      <Text style={styles.primaryButtonText}>Retake Photo</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            </Modal>
-
-            <Modal
-              transparent={true}
-              visible={idTypeModalVisible}
-              onRequestClose={() => setIdTypeModalVisible(false)}
-            >
-              <TouchableOpacity
-                style={styles.modalOverlay}
-                activeOpacity={1}
-                onPressOut={() => setIdTypeModalVisible(false)}
-              >
-                <View style={styles.modalContent}>
-                  {idOptions.map((option) => (
-                    <TouchableOpacity
-                      key={option}
-                      style={styles.modalOption}
-                      onPress={() => {
-                        setIdType(option);
-                        setIdTypeModalVisible(false);
-                        // Reset upload/OCR state when changing ID type
-                        setIdDocument('');
-                        setRegistrationId(null);
-                        setOcrApproved(false);
-                      }}
-                    >
-                      <Text style={styles.modalOptionText}>{ID_TYPE_LABELS[option]}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </TouchableOpacity>
-            </Modal>
-
-            <Text style={styles.fieldLabel}>Upload ID Document</Text>
-            <TouchableOpacity
-              style={styles.uploadBox}
-              onPress={pickImage}
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <ActivityIndicator size="large" color="#001a4d" />
-              ) : idDocument ? (
-                <Image source={{ uri: idDocument }} style={{ width: '100%', height: '100%', borderRadius: 8 }} resizeMode="contain" />
-              ) : (
-                <Text style={styles.uploadText}>Drag & Drop or Click to Upload</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.primaryButton} onPress={next}>
-              <Text style={styles.primaryButtonText}>Next</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {step === 2 && (
-          <View style={styles.card}>
-            <Text style={styles.title}>Personal Information</Text>
-
-            <Text style={styles.fieldLabel}>First Name</Text>
-            <TextInput style={styles.input} value={firstName} onChangeText={setFirstName} placeholder="First Name" />
-
-            <Text style={styles.fieldLabel}>Middle Name</Text>
-            <TextInput style={styles.input} value={middleName} onChangeText={setMiddleName} placeholder="Middle Name" />
-
-            <Text style={styles.fieldLabel}>Last Name</Text>
-            <TextInput style={styles.input} value={lastName} onChangeText={setLastName} placeholder="Last Name" />
-
-            <Text style={styles.fieldLabel}>Date of Birth</Text>
-            <TouchableOpacity
-              style={styles.datePickerButton}
-              onPress={() => setShowDatePicker(true)}
-            >
-              <Text style={dob ? styles.datePickerText : styles.datePickerPlaceholder}>
-                {dob || 'Select Date of Birth'}
-              </Text>
-              <Text style={styles.pickerIcon}>📅</Text>
-            </TouchableOpacity>
-
-            {showDatePicker && (
-              <DateTimePicker
-                value={dobDate}
-                mode="date"
-                display="spinner"
-                maximumDate={new Date()}
-                onChange={(event, selectedDate) => {
-                  setShowDatePicker(Platform.OS === 'ios');
-                  if (selectedDate) {
-                    setDobDate(selectedDate);
-                    // Format as MM/DD/YYYY
-                    const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
-                    const day = String(selectedDate.getDate()).padStart(2, '0');
-                    const year = selectedDate.getFullYear();
-                    setDob(`${month}/${day}/${year}`);
-                  }
-                }}
-              />
-            )}
-
-            <Text style={styles.fieldLabel}>ID Number</Text>
-            <TextInput style={styles.input} value={idNumber} onChangeText={setIdNumber} placeholder="ID Number" />
-
-            <TouchableOpacity style={styles.primaryButton} onPress={next}>
-              <Text style={styles.primaryButtonText}>Next</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {step === 3 && (
-          <View style={styles.card}>
-            <Text style={styles.title}>Address Details</Text>
-
-            <Text style={styles.fieldLabel}>Region</Text>
-            <Dropdown
-              style={styles.dropdown}
-              placeholderStyle={styles.dropdownPlaceholder}
-              selectedTextStyle={styles.dropdownSelectedText}
-              data={regionsList}
-              maxHeight={300}
-              labelField="label"
-              valueField="value"
-              placeholder={addressIsLoading.region ? "Loading regions..." : "Select Region"}
-              value={addressData.regionCode}
-              onChange={handleRegionChange}
-            />
-
-            {(provincesList.length > 0) && (
-              <>
-                <Text style={styles.fieldLabel}>Province</Text>
-                <Dropdown
-                  style={styles.dropdown}
-                  placeholderStyle={styles.dropdownPlaceholder}
-                  selectedTextStyle={styles.dropdownSelectedText}
-                  data={provincesList}
-                  maxHeight={300}
-                  labelField="label"
-                  valueField="value"
-                  placeholder={addressIsLoading.province ? "Loading provinces..." : "Select Province"}
-                  value={addressData.provinceCode}
-                  onChange={handleProvinceChange}
+            {/* Logo */}
+            <View style={styles.logoOuterGlow}>
+              <View style={styles.logoContainer}>
+                <Image
+                  source={require('../../assets/images/loginPageLogo.png')}
+                  style={styles.logo}
+                  resizeMode="contain"
                 />
-              </>
-            )}
-
-            <Text style={styles.fieldLabel}>City / Municipality</Text>
-            <Dropdown
-              style={styles.dropdown}
-              placeholderStyle={styles.dropdownPlaceholder}
-              selectedTextStyle={styles.dropdownSelectedText}
-              data={citiesList}
-              maxHeight={300}
-              labelField="label"
-              valueField="value"
-              placeholder={addressIsLoading.city ? "Loading cities..." : "Select City/Municipality"}
-              value={addressData.cityCode}
-              onChange={handleCityChange}
-            />
-
-            <Text style={styles.fieldLabel}>Barangay</Text>
-            <Dropdown
-              style={styles.dropdown}
-              placeholderStyle={styles.dropdownPlaceholder}
-              selectedTextStyle={styles.dropdownSelectedText}
-              data={barangaysList}
-              maxHeight={300}
-              labelField="label"
-              valueField="value"
-              placeholder={addressIsLoading.barangay ? "Loading barangays..." : "Select Barangay"}
-              value={addressData.barangayCode}
-              onChange={handleBarangayChange}
-            />
-
-            <Text style={styles.fieldLabel}>Street / House Number / Building</Text>
-            <TextInput
-              style={styles.input}
-              value={addressData.street}
-              onChangeText={(txt) => setAddressData({ ...addressData, street: txt })}
-              placeholder="123 Main St, Building Name"
-            />
-
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={next}
-              disabled={isLoading}
-            >
-              <Text style={styles.primaryButtonText}>{isLoading ? 'Saving...' : 'Next'}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {step === 4 && (
-          <View style={styles.card}>
-            <Text style={styles.title}>Capture Selfie</Text>
-            <Text style={styles.help}>Please take a clear selfie of yourself for identity verification.</Text>
-
-            <View style={styles.selfieFrame}>
-              {selfieUri ? (
-                <Image source={{ uri: selfieUri }} style={{ width: '100%', height: '100%', borderRadius: 12 }} resizeMode="cover" />
-              ) : (
-                <Text style={styles.selfiePlaceholder}>Position your face in the guide when camera opens</Text>
-              )}
+              </View>
             </View>
 
-            <TouchableOpacity
-              style={[styles.primaryButton, { backgroundColor: selfieUri ? '#4CAF50' : '#001a4d' }]}
-              onPress={() => setShowCamera(true)}
-              disabled={isLoading}
-            >
-              <Text style={styles.primaryButtonText}>{selfieUri ? 'Retake Selfie' : 'Take Selfie'}</Text>
-            </TouchableOpacity>
-
-            {selfieUri && (
-              <TouchableOpacity
-                style={[styles.primaryButton, { marginTop: 15 }]}
-                onPress={next}
-                disabled={isLoading}
-              >
-                <Text style={styles.primaryButtonText}>Next</Text>
-              </TouchableOpacity>
-            )}
-
-            <Modal visible={showCamera} animationType="slide">
-              <KYCCamera
-                registrationId={registrationId || ''}
-                onCapture={(uri) => {
-                  setSelfieUri(uri);
-                  setSelfieTaken(true);
-                  setShowCamera(false);
-                }}
-                onCancel={() => setShowCamera(false)}
-              />
-            </Modal>
+            {/* Title */}
+            <Text style={styles.headerTitle}>Sign Up (Step {step} of 5)</Text>
           </View>
-        )}
 
-        {step === 5 && (
-          <View style={styles.card}>
-            <Text style={styles.title}>Email Verification</Text>
+          {/* White Card Section */}
+          <View style={styles.whiteCardContainer}>
+            <ScrollView
+              contentContainerStyle={[styles.scrollContent, { paddingBottom: 60 }]}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {step === 1 && (
+                <View style={styles.stepContent}>
+                  <Text style={styles.sectionTitle}>Identity Verification</Text>
+                  <Text style={styles.sectionHelp}>To get started, please select your ID type and upload your document</Text>
 
-            {!otpSent ? (
-              <>
-                <Text style={styles.help}>Enter your email address to receive a verification code.</Text>
-                <Text style={styles.fieldLabel}>Email Address</Text>
-                <TextInput
-                  style={styles.input}
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder="example@mail.com"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-                <TouchableOpacity
-                  style={[styles.primaryButton, isLoading && { opacity: 0.7 }]}
-                  onPress={submit}
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.primaryButtonText}>Send Verification Code</Text>
+                  {ocrScanning && (
+                    <View style={styles.ocrStatus}>
+                      <ActivityIndicator size="small" color="#00104A" />
+                      <Text style={styles.ocrText}> Scanning ID... Please wait.</Text>
+                    </View>
                   )}
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={styles.help}>We've sent a 6-digit code to {email}.</Text>
 
-                <View style={otpStyles.otpContainer}>
-                  {otp.map((digit, index) => (
-                    <TextInput
-                      key={index}
-                      ref={(el) => { otpInputs.current[index] = el; }}
-                      style={otpStyles.otpInput}
-                      value={digit}
-                      onChangeText={(text) => {
-                        const newOtp = [...otp];
-                        newOtp[index] = text.slice(-1);
-                        setOtp(newOtp);
-                        if (text && index < 5) otpInputs.current[index + 1].focus();
-                      }}
-                      onKeyPress={({ nativeEvent }) => {
-                        if (nativeEvent.key === 'Backspace' && !otp[index] && index > 0) {
-                          otpInputs.current[index - 1].focus();
+                  <Text style={styles.fieldLabel}>Select ID Type</Text>
+                  <TouchableOpacity
+                    style={styles.picker}
+                    onPress={() => setIdTypeModalVisible(true)}
+                  >
+                    <Text style={styles.pickerText}>
+                      {idType ? ID_TYPE_LABELS[idType as IDType] : 'Choose your identification document'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={20} color="#666" />
+                  </TouchableOpacity>
+
+                  {autofillMessage && (
+                    <View style={styles.autofillBanner}>
+                      <Text style={styles.autofillText}>{autofillMessage}</Text>
+                    </View>
+                  )}
+
+                  {/* ID Type Modal */}
+                  <Modal
+                    transparent={true}
+                    visible={idTypeModalVisible}
+                    onRequestClose={() => setIdTypeModalVisible(false)}
+                  >
+                    <TouchableOpacity
+                      style={styles.modalOverlay}
+                      activeOpacity={1}
+                      onPressOut={() => setIdTypeModalVisible(false)}
+                    >
+                      <View style={styles.modalContent}>
+                        <ScrollView>
+                          {idOptions.map((option) => (
+                            <TouchableOpacity
+                              key={option}
+                              style={styles.modalOption}
+                              onPress={() => {
+                                setIdType(option);
+                                setIdTypeModalVisible(false);
+                                // Reset upload/OCR state when changing ID type
+                                setIdDocument('');
+                                setRegistrationId(null);
+                                setOcrApproved(false);
+                              }}
+                            >
+                              <Text style={styles.modalOptionText}>{ID_TYPE_LABELS[option]}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    </TouchableOpacity>
+                  </Modal>
+
+                  {/* OCR Warning Modal */}
+                  <Modal
+                    transparent={true}
+                    visible={ocrWarningVisible}
+                    onRequestClose={() => setOcrWarningVisible(false)}
+                  >
+                    <View style={styles.modalOverlay}>
+                      <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>❌ Verification Failed</Text>
+                        <Text style={styles.modalText}>
+                          The uploaded image does not match a {idType ? ID_TYPE_LABELS[idType as IDType] : 'valid ID'}. Please retake the photo and ensure it is clear.
+                        </Text>
+                        <View style={styles.modalButtons}>
+                          <TouchableOpacity style={[styles.primaryButton, { width: '100%', marginTop: 0 }]} onPress={() => {
+                            setOcrWarningVisible(false);
+                            pickImage(); // Retake
+                          }}>
+                            <Text style={styles.primaryButtonText}>Retake Photo</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  </Modal>
+
+                  <Text style={styles.fieldLabel}>Upload ID Document</Text>
+                  <TouchableOpacity
+                    style={styles.uploadBox}
+                    onPress={pickImage}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <ActivityIndicator size="large" color="#00104A" />
+                    ) : idDocument ? (
+                      <Image source={{ uri: idDocument }} style={{ width: '100%', height: '100%', borderRadius: 8 }} resizeMode="contain" />
+                    ) : (
+                      <View style={{ alignItems: 'center' }}>
+                        <Ionicons name="cloud-upload-outline" size={40} color="#ccc" style={{ marginBottom: 8 }} />
+                        <Text style={styles.uploadText}>Drag & Drop or Click to Upload</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.primaryButton} onPress={next}>
+                    <Text style={styles.primaryButtonText}>Next</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {step === 2 && (
+                <View style={styles.stepContent}>
+                  <Text style={styles.sectionTitle}>Personal Information</Text>
+
+                  <Text style={styles.fieldLabel}>First Name</Text>
+                  <TextInput style={styles.input} value={firstName} onChangeText={setFirstName} placeholder="First Name" />
+
+                  <Text style={styles.fieldLabel}>Middle Name</Text>
+                  <TextInput style={styles.input} value={middleName} onChangeText={setMiddleName} placeholder="Middle Name" />
+
+                  <Text style={styles.fieldLabel}>Last Name</Text>
+                  <TextInput style={styles.input} value={lastName} onChangeText={setLastName} placeholder="Last Name" />
+
+                  <Text style={styles.fieldLabel}>Date of Birth</Text>
+                  <TouchableOpacity
+                    style={styles.datePickerButton}
+                    onPress={() => setShowDatePicker(true)}
+                  >
+                    <Text style={dob ? styles.datePickerText : styles.datePickerPlaceholder}>
+                      {dob || 'Select Date of Birth'}
+                    </Text>
+                    <Ionicons name="calendar-outline" size={20} color="#666" />
+                  </TouchableOpacity>
+
+                  {showDatePicker && (
+                    <DateTimePicker
+                      value={dobDate}
+                      mode="date"
+                      display="spinner"
+                      maximumDate={new Date()}
+                      onChange={(event, selectedDate) => {
+                        setShowDatePicker(Platform.OS === 'ios');
+                        if (selectedDate) {
+                          setDobDate(selectedDate);
+                          // Format as MM/DD/YYYY
+                          const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+                          const day = String(selectedDate.getDate()).padStart(2, '0');
+                          const year = selectedDate.getFullYear();
+                          setDob(`${month}/${day}/${year}`);
                         }
                       }}
-                      keyboardType="number-pad"
-                      maxLength={1}
                     />
-                  ))}
-                </View>
-
-                <TouchableOpacity
-                  style={[styles.primaryButton, isLoading && { opacity: 0.7 }]}
-                  onPress={handleVerify}
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.primaryButtonText}>Verify Email</Text>
                   )}
-                </TouchableOpacity>
 
-                <TouchableOpacity
-                  onPress={handleResend}
-                  disabled={timer > 0}
-                  style={{ marginTop: 20, alignItems: 'center' }}
-                >
-                  <Text style={{ color: timer > 0 ? '#999' : '#001a4d', fontWeight: 'bold' }}>
-                    {timer > 0 ? `Resend Code in ${timer}s` : 'Resend Code'}
-                  </Text>
-                </TouchableOpacity>
+                  <Text style={styles.fieldLabel}>ID Number</Text>
+                  <TextInput style={styles.input} value={idNumber} onChangeText={setIdNumber} placeholder="ID Number" />
 
-                <TouchableOpacity
-                  onPress={() => setOtpSent(false)}
-                  style={{ marginTop: 10, alignItems: 'center' }}
-                >
-                  <Text style={{ color: '#666' }}>Change Email</Text>
-                </TouchableOpacity>
-              </>
-            )}
+                  <TouchableOpacity style={styles.primaryButton} onPress={next}>
+                    <Text style={styles.primaryButtonText}>Next</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {step === 3 && (
+                <View style={styles.stepContent}>
+                  <Text style={styles.sectionTitle}>Address Details</Text>
+
+                  <Text style={styles.fieldLabel}>Region</Text>
+                  <Dropdown
+                    style={styles.dropdown}
+                    placeholderStyle={styles.dropdownPlaceholder}
+                    selectedTextStyle={styles.dropdownSelectedText}
+                    data={regionsList}
+                    maxHeight={300}
+                    labelField="label"
+                    valueField="value"
+                    placeholder={addressIsLoading.region ? "Loading regions..." : "Select Region"}
+                    value={addressData.regionCode}
+                    onChange={handleRegionChange}
+                  />
+
+                  {(provincesList.length > 0) && (
+                    <>
+                      <Text style={styles.fieldLabel}>Province</Text>
+                      <Dropdown
+                        style={styles.dropdown}
+                        placeholderStyle={styles.dropdownPlaceholder}
+                        selectedTextStyle={styles.dropdownSelectedText}
+                        data={provincesList}
+                        maxHeight={300}
+                        labelField="label"
+                        valueField="value"
+                        placeholder={addressIsLoading.province ? "Loading provinces..." : "Select Province"}
+                        value={addressData.provinceCode}
+                        onChange={handleProvinceChange}
+                      />
+                    </>
+                  )}
+
+                  <Text style={styles.fieldLabel}>City / Municipality</Text>
+                  <Dropdown
+                    style={styles.dropdown}
+                    placeholderStyle={styles.dropdownPlaceholder}
+                    selectedTextStyle={styles.dropdownSelectedText}
+                    data={citiesList}
+                    maxHeight={300}
+                    labelField="label"
+                    valueField="value"
+                    placeholder={addressIsLoading.city ? "Loading cities..." : "Select City/Municipality"}
+                    value={addressData.cityCode}
+                    onChange={handleCityChange}
+                  />
+
+                  <Text style={styles.fieldLabel}>Barangay</Text>
+                  <Dropdown
+                    style={styles.dropdown}
+                    placeholderStyle={styles.dropdownPlaceholder}
+                    selectedTextStyle={styles.dropdownSelectedText}
+                    data={barangaysList}
+                    maxHeight={300}
+                    labelField="label"
+                    valueField="value"
+                    placeholder={addressIsLoading.barangay ? "Loading barangays..." : "Select Barangay"}
+                    value={addressData.barangayCode}
+                    onChange={handleBarangayChange}
+                  />
+
+                  <Text style={styles.fieldLabel}>Street / House Number / Building</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={addressData.street}
+                    onChangeText={(txt) => setAddressData({ ...addressData, street: txt })}
+                    placeholder="123 Main St, Building Name"
+                  />
+
+                  <TouchableOpacity
+                    style={styles.primaryButton}
+                    onPress={next}
+                    disabled={isLoading}
+                  >
+                    <Text style={styles.primaryButtonText}>{isLoading ? 'Saving...' : 'Next'}</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {step === 4 && (
+                <View style={styles.stepContent}>
+                  <Text style={styles.sectionTitle}>Capture Selfie</Text>
+                  <Text style={styles.sectionHelp}>Please take a clear selfie of yourself for identity verification.</Text>
+
+                  <View style={styles.selfieFrame}>
+                    {selfieUri ? (
+                      <Image source={{ uri: selfieUri }} style={{ width: '100%', height: '100%', borderRadius: 12 }} resizeMode="cover" />
+                    ) : (
+                      <Text style={styles.selfiePlaceholder}>Position your face in the guide when camera opens</Text>
+                    )}
+                  </View>
+
+                  <TouchableOpacity
+                    style={[styles.primaryButton, { backgroundColor: selfieUri ? '#10B981' : '#00104A' }]}
+                    onPress={() => setShowCamera(true)}
+                    disabled={isLoading}
+                  >
+                    <Text style={styles.primaryButtonText}>{selfieUri ? 'Retake Selfie' : 'Take Selfie'}</Text>
+                  </TouchableOpacity>
+
+                  {selfieUri && (
+                    <TouchableOpacity
+                      style={[styles.primaryButton, { marginTop: 15 }]}
+                      onPress={next}
+                      disabled={isLoading}
+                    >
+                      <Text style={styles.primaryButtonText}>Next</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  <Modal visible={showCamera} animationType="slide">
+                    <KYCCamera
+                      registrationId={registrationId || ''}
+                      onCapture={(uri) => {
+                        setSelfieUri(uri);
+                        setSelfieTaken(true);
+                        setShowCamera(false);
+                      }}
+                      onCancel={() => setShowCamera(false)}
+                    />
+                  </Modal>
+                </View>
+              )}
+
+              {step === 5 && (
+                <View style={styles.stepContent}>
+                  <Text style={styles.sectionTitle}>Email Verification</Text>
+
+                  {!otpSent ? (
+                    <>
+                      <Text style={styles.sectionHelp}>Enter your email address to receive a verification code.</Text>
+                      <Text style={styles.fieldLabel}>Email Address</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={email}
+                        onChangeText={setEmail}
+                        placeholder="example@mail.com"
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                      />
+                      <TouchableOpacity
+                        style={[styles.primaryButton, isLoading && { opacity: 0.7 }]}
+                        onPress={submit}
+                        disabled={isLoading}
+                      >
+                        {isLoading ? (
+                          <ActivityIndicator color="#fff" />
+                        ) : (
+                          <Text style={styles.primaryButtonText}>Send Verification Code</Text>
+                        )}
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.sectionHelp}>We've sent a 6-digit code to {email}.</Text>
+
+                      <View style={otpStyles.otpContainer}>
+                        {otp.map((digit, index) => (
+                          <TextInput
+                            key={index}
+                            ref={(el) => { otpInputs.current[index] = el; }}
+                            style={otpStyles.otpInput}
+                            value={digit}
+                            onChangeText={(text) => {
+                              const newOtp = [...otp];
+                              newOtp[index] = text.slice(-1);
+                              setOtp(newOtp);
+                              if (text && index < 5) otpInputs.current[index + 1].focus();
+                            }}
+                            onKeyPress={({ nativeEvent }) => {
+                              if (nativeEvent.key === 'Backspace' && !otp[index] && index > 0) {
+                                otpInputs.current[index - 1].focus();
+                              }
+                            }}
+                            keyboardType="number-pad"
+                            maxLength={1}
+                          />
+                        ))}
+                      </View>
+
+                      <TouchableOpacity
+                        style={[styles.primaryButton, isLoading && { opacity: 0.7 }]}
+                        onPress={handleVerify}
+                        disabled={isLoading}
+                      >
+                        {isLoading ? (
+                          <ActivityIndicator color="#fff" />
+                        ) : (
+                          <Text style={styles.primaryButtonText}>Verify Email</Text>
+                        )}
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={handleResend}
+                        disabled={timer > 0}
+                        style={{ marginTop: 20, alignItems: 'center' }}
+                      >
+                        <Text style={{ color: timer > 0 ? '#999' : '#00104A', fontWeight: 'bold' }}>
+                          {timer > 0 ? `Resend Code in ${timer}s` : 'Resend Code'}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => setOtpSent(false)}
+                        style={{ marginTop: 10, alignItems: 'center' }}
+                      >
+                        <Text style={{ color: '#666' }}>Change Email</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+              )}
+            </ScrollView>
           </View>
-        )}
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
-    marginTop: 10,
   },
-  content: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    paddingHorizontal: width * 0.06,
-  },
-  headerRow: {
+  backgroundImage: {
+    ...StyleSheet.absoluteFillObject,
     width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
+    height: '100%',
   },
-  backButton: {
-    padding: 12,
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 16, 74, 0.75)',
   },
-  backText: {
-    color: '#001a4d',
-    fontWeight: '700',
-  },
-  stepLabel: {
+  safeArea: {
     flex: 1,
-    textAlign: 'center',
-    marginTop: 70,
-    paddingRight: 80,
-    color: '#333',
-    fontWeight: '600',
   },
-  card: {
-    width: '100%',
-    maxWidth: 450,
-    backgroundColor: '#fff',
-    marginTop: 20,
-    padding: 18,
-    borderRadius: 12,
+
+  // Header Section
+  headerSection: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 30,
+    position: 'relative',
+    zIndex: 10,
+  },
+  headerBackButton: {
+    position: 'absolute',
+    left: 20,
+    top: 10,
+    padding: 8,
+    zIndex: 20,
+  },
+  logoOuterGlow: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    shadowColor: '#4DA6FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 25,
+    elevation: 20,
+    marginBottom: 15,
+  },
+  logoContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 60,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 6,
-    marginBottom: 18,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 10,
   },
-  title: {
-    fontSize: 18,
-    fontWeight: '700',
+  logo: {
+    width: 100,
+    height: 100,
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 1,
+    textAlign: 'center',
+  },
+
+  // White Card Section
+  whiteCardContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    paddingTop: 30,
+    paddingHorizontal: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  scrollContent: {
+    paddingBottom: 40,
+  },
+  stepContent: {
+    width: '100%',
+  },
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#00104A',
     marginBottom: 8,
-    color: '#000',
+    textAlign: 'center',
   },
-  help: {
+  sectionHelp: {
+    fontSize: 14,
     color: '#666',
-    marginBottom: 12,
+    textAlign: 'center',
+    marginBottom: 24,
   },
+
+  // Fields & Inputs
   fieldLabel: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
-    marginTop: 30,
-    marginBottom: 10,
+    color: '#333',
+    marginBottom: 8,
+    marginTop: 12,
+  },
+  input: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 15,
     color: '#333',
   },
   picker: {
-    backgroundColor: '#f9f9f9',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
-    padding: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  datePickerButton: {
-    backgroundColor: '#f9f9f9',
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
-    padding: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  datePickerText: {
-    color: '#333',
-    fontSize: 15,
-  },
-  datePickerPlaceholder: {
-    color: '#999',
-    fontSize: 15,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   pickerText: {
-    color: '#666',
+    fontSize: 15,
+    color: '#333',
   },
-  pickerIcon: {
-    color: '#666',
-  },
-  uploadBox: {
-    height: 250,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    backgroundColor: '#fafafa',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  uploadText: {
-    color: '#666',
-  },
-  input: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: Platform.OS === 'android' ? 6 : 10,
-  },
-  primaryButton: {
-    backgroundColor: '#001a4d',
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 25,
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontWeight: '700',
-  },
-  cancelButton: {
-    marginTop: 12,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e53935',
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  cancelButtonText: {
-    color: '#e53935',
-    fontWeight: '700',
-  },
-  selfieFrame: {
-    height: 300,
-    marginTop: 15,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fafafa',
-    marginBottom: 12,
-  },
-  selfiePlaceholder: {
-    color: '#999',
-    textAlign: 'center',
-  },
-  rowButtons: {
+  datePickerButton: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
-    marginTop: 18,
-  },
-  cancelOutline: {
-    flex: 1,
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#e53935',
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginRight: 8,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
-  cancelOutlineText: {
-    color: '#e53935',
-    fontWeight: '700',
-  },
-  submitButton: {
-    flex: 1,
-    backgroundColor: '#2e7d32',
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginLeft: 8,
-  },
-  submitButtonText: {
-    color: '#fff',
-    fontWeight: '700',
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 10,
-    width: '80%',
-    maxHeight: '70%',
-  },
-  modalOption: {
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  modalOptionText: {
-    textAlign: 'center',
-    fontSize: 16,
-    color: '#333',
-  },
-  ocrStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-    padding: 8,
-    backgroundColor: '#e3f2fd',
-    borderRadius: 8,
-  },
-  ocrText: {
-    marginLeft: 8,
-    color: '#0d47a1',
-    fontWeight: '600',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    textAlign: 'center',
-    color: '#f57c00',
-  },
-  modalText: {
+  datePickerText: {
     fontSize: 15,
-    marginBottom: 20,
-    textAlign: 'center',
     color: '#333',
-    lineHeight: 22,
   },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    width: '100%',
-  },
-  secondaryButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#001a4d',
-  },
-  secondaryButtonText: {
-    color: '#001a4d',
-    fontWeight: '600',
-  },
-  primaryButtonModal: {
-    backgroundColor: '#001a4d',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-  },
-  autofillBanner: {
-    backgroundColor: '#e8f5e9',
-    padding: 10,
-    borderRadius: 8,
-    marginTop: 10,
-    borderLeftWidth: 4,
-    borderLeftColor: '#43a047',
-  },
-  autofillText: {
-    color: '#2e7d32',
-    fontSize: 14,
-    fontWeight: '600',
+  datePickerPlaceholder: {
+    fontSize: 15,
+    color: '#999',
   },
   dropdown: {
     height: 50,
-    borderColor: '#ddd',
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#fff',
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 16,
     marginBottom: 12,
   },
   dropdownPlaceholder: {
@@ -1223,23 +1152,154 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#333',
   },
+
+  // Upload Box
+  uploadBox: {
+    height: 220,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#CBD5E1',
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 20,
+  },
+  uploadText: {
+    fontSize: 14,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+
+  // selfie
+  selfieFrame: {
+    height: 300,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#CBD5E1',
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  selfiePlaceholder: {
+    color: '#999',
+    textAlign: 'center',
+  },
+
+  // Buttons
+  primaryButton: {
+    backgroundColor: '#00104A',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 10,
+    shadowColor: '#00104A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  // OCR & Banners
+  ocrStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E0F2FE',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  ocrText: {
+    marginLeft: 10,
+    color: '#0369A1',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  autofillBanner: {
+    backgroundColor: '#DCFCE7',
+    padding: 12,
+    borderRadius: 12,
+    marginTop: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#16A34A',
+  },
+  autofillText: {
+    color: '#15803D',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  // Modals
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    width: '85%',
+    maxHeight: '70%',
+    elevation: 5,
+  },
+  modalOption: {
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  modalOptionText: {
+    textAlign: 'center',
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    textAlign: 'center',
+    color: '#DC2626',
+  },
+  modalText: {
+    fontSize: 15,
+    marginBottom: 24,
+    textAlign: 'center',
+    color: '#4B5563',
+    lineHeight: 22,
+  },
+  modalButtons: {
+    width: '100%',
+  },
 });
+
 const otpStyles = StyleSheet.create({
   otpContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',
-    marginVertical: 20,
+    marginVertical: 24,
   },
   otpInput: {
     width: width * 0.12,
     height: width * 0.12,
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
+    borderColor: '#CBD5E1',
+    borderRadius: 12,
     textAlign: 'center',
     fontSize: 20,
     fontWeight: 'bold',
-    backgroundColor: '#fff',
+    backgroundColor: '#F8FAFC',
+    color: '#0F172A',
   }
 });

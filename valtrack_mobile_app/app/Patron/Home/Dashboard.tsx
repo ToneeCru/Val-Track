@@ -205,7 +205,7 @@ function CalendarSection() {
         <View style={styles.eventsHeader}>
           <ThemedText
             style={[
-              styles.eventsTitle,
+              styles.eventTitle,
               { color: '#00104A', fontWeight: 'bold' }
             ]}
           >
