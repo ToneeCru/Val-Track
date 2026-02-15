@@ -1,17 +1,13 @@
 /**
  * OverallHeader Component
  *
- * Consistent header used across all main tabs (Home, In/Out, Profile)
+ * Consistent header used across all main tabs.
  * Features:
- * - Val-Track branding with logo image
- * - Notification bell icon with badge counter
- * - Responsive mobile design
- * - Consistent styling across all screens
- * - Touch-friendly notification button
- *
- * Props:
- * - notificationCount: Number of unread notifications
- * - onNotificationPress: Callback when notification bell is pressed
+ * - Hamburger Menu (Left)
+ * - Val-Track Branding (Left-Center)
+ * - QR Code Shortuct (Right)
+ * - Notification Bell (Right)
+ * - Profile Icon (Right)
  */
 
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -25,29 +21,41 @@ import {
   View
 } from 'react-native';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
-// Logo image (use require for RN bundler)
+// Logo image
 const valtrackLogo = require('../../assets/images/valtrackLogo2.png');
+// Placeholder profile image (replace with real user data later)
+const defaultProfileImg = 'https://via.placeholder.com/40';
 
 interface OverallHeaderProps {
   notificationCount?: number;
+  onMenuPress?: () => void;
   onNotificationPress?: () => void;
+  onQrPress?: () => void;
+  onProfilePress?: () => void;
 }
 
-/**
- * OverallHeader Component
- * Reusable header for all main app screens
- */
 export default function OverallHeader({
   notificationCount = 0,
+  onMenuPress,
   onNotificationPress,
+  onQrPress,
+  onProfilePress,
 }: OverallHeaderProps) {
   return (
     <View style={styles.headerContainer}>
-      {/* Left Section: Logo only */}
-      <View style={styles.brandingSection}>
-        {/* Logo Image */}
+
+      {/* Left Section: Menu & Logo */}
+      <View style={styles.leftSection}>
+        <TouchableOpacity
+          style={styles.iconButton}
+          onPress={onMenuPress}
+          activeOpacity={0.7}
+        >
+          <MaterialCommunityIcons name="menu" size={28} color="#001a4d" />
+        </TouchableOpacity>
+
         <Image
           source={valtrackLogo}
           style={styles.logo}
@@ -55,31 +63,48 @@ export default function OverallHeader({
         />
       </View>
 
-      {/* Right Section: Notification Bell */}
-      <TouchableOpacity
-        style={styles.notificationButton}
-        onPress={onNotificationPress}
-        activeOpacity={0.7}
-        accessible={true}
-        accessibilityRole="button"
-        accessibilityLabel={`${notificationCount} notifications`}
-      >
-        {/* Bell Icon */}
-        <MaterialCommunityIcons
-          name="bell"
-          size={24}
-          color="#001a4d"
-        />
+      {/* Right Section: Actions */}
+      <View style={styles.rightSection}>
+        {/* QR Code Button */}
+        <TouchableOpacity
+          style={styles.iconButton}
+          onPress={onQrPress}
+          activeOpacity={0.7}
+        >
+          <MaterialCommunityIcons name="qrcode-scan" size={24} color="#001a4d" />
+        </TouchableOpacity>
 
-        {/* Notification Badge */}
-        {notificationCount > 0 && (
-          <View style={styles.notificationBadge}>
-            <Text style={styles.badgeText}>
-              {notificationCount > 99 ? '99+' : notificationCount}
-            </Text>
+        {/* Notification Bell */}
+        <TouchableOpacity
+          style={styles.iconButton}
+          onPress={onNotificationPress}
+          activeOpacity={0.7}
+        >
+          <MaterialCommunityIcons name="bell-outline" size={24} color="#001a4d" />
+          {notificationCount > 0 && (
+            <View style={styles.notificationBadge}>
+              <Text style={styles.badgeText}>
+                {notificationCount > 99 ? '99+' : notificationCount}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* Profile Icon */}
+        <TouchableOpacity
+          style={styles.profileButton}
+          onPress={onProfilePress}
+          activeOpacity={0.7}
+        >
+          <View style={styles.profileImageContainer}>
+            <Image
+              source={{ uri: defaultProfileImg }}
+              style={styles.profileImage}
+            />
+            <View style={styles.onlineIndicator} />
           </View>
-        )}
-      </TouchableOpacity>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -89,61 +114,77 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingTop: 45, // Status bar formatting
+    paddingBottom: 12,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
-    elevation: 2,
+    elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.1,
     shadowRadius: 4,
+    zIndex: 100,
   },
-
-  // Branding Section
-  brandingSection: {
+  leftSection: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    marginLeft: -15, 
   },
-
   logo: {
     width: 100,
-    height: 60,
-    marginTop: 30,
+    height: 50,
+    marginLeft: -20,
   },
-
-  // Notification Section
-  notificationButton: {
+  rightSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  iconButton: {
+    padding: 8,
     position: 'relative',
-    paddingTop: 20,
-    paddingRight: 5,
   },
-
   notificationBadge: {
     position: 'absolute',
-    top: -4,
-    right: -4,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#ef4444',
+    top: 6,
+    right: 6,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#FF2B2B',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 40,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
+    borderWidth: 1.5,
+    borderColor: '#fff',
   },
-
   badgeText: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 9,
+    fontWeight: 'bold',
     color: '#fff',
-    textAlign: 'center',
+  },
+  profileButton: {
+    marginLeft: 4,
+  },
+  profileImageContainer: {
+    position: 'relative',
+  },
+  profileImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#ddd',
+  },
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#10B981', // Green
+    borderWidth: 1.5,
+    borderColor: '#fff',
   },
 });

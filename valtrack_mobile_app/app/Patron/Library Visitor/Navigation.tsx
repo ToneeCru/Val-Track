@@ -1,189 +1,321 @@
 /**
- * Navigation Component
+ * Navigation Component (Sidebar Drawer)
  *
- * Sticky bottom navigation bar with three main tabs:
- * - Home: Dashboard view
- * - In/Out: Analytics view
- * - Profile: User profile view
- *
+ * Transformed from bottom tabs to a sliding sidebar drawer.
  * Features:
- * - Fixed position (sticky) at the bottom of the screen
- * - Active tab highlighting
- * - Smooth navigation between screens
- * - Responsive design for mobile devices
+ * - Animated slide-in/out
+ * - Profile header
+ * - Main navigation links
+ * - Logout button
+ * - Overlay background to close
  */
 
-import { MaterialIcons } from '@expo/vector-icons';
-import { usePathname, useRouter } from 'expo-router';
-import React, { useMemo } from 'react';
+import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useRef } from 'react';
 import {
+  Alert,
+  Animated,
   Dimensions,
+  Image,
   StyleSheet,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 
 const { width, height } = Dimensions.get('window');
+const DRAWER_WIDTH = width * 0.8;
+
+// Placeholder profile image
+const defaultProfileImg = 'https://via.placeholder.com/60';
 
 interface NavigationProps {
   activeTab?: string;
+  isOpen: boolean;
+  onClose: () => void;
 }
 
-/**
- * Navigation Component
- * Provides sticky bottom navigation for the app
- */
-export default function Navigation({ activeTab = 'home' }: NavigationProps) {
+export default function Navigation({ activeTab = 'home', isOpen, onClose }: NavigationProps) {
   const router = useRouter();
-  const pathname = usePathname();
-  
-  // Determine active tab based on current pathname
-  const active = useMemo(() => {
-    if (pathname.includes('Dashboard')) return 'home';
-    if (pathname.includes('InOutAnalytics')) return 'inout';
-    if (pathname.includes('UserProfile')) return 'profile';
-    return activeTab || 'home';
-  }, [pathname, activeTab]);
+  const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  /**
-   * Navigate to Home (Dashboard)
-   */
-  const handleHomePress = () => {
-    router.push('/Patron/Home/Dashboard');
+  useEffect(() => {
+    if (isOpen) {
+      // Open Drawer
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      // Close Drawer
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: -DRAWER_WIDTH,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [isOpen]);
+
+  const handleNavigation = (route: string) => {
+    onClose();
+    // Small delay to allow drawer to close before navigating (smoother UX)
+    setTimeout(() => {
+      if (route === 'dashboard') router.push('/Patron/Home/Dashboard');
+      else if (route === 'qr') router.push('/Patron/QR/UserQRCode');
+      else if (route === 'capacity') router.push('/Patron/Area Capacity/FloorAreaCapacity');
+      else if (route === 'analytics') router.push('/Patron/UserAnalytics/CheckInAnalytics');
+      else if (route === 'settings') router.push('/Patron/Settings/UserSettings');
+    }, 200);
   };
 
-  /**
-   * Navigate to In/Out (Analytics)
-   */
-  const handleInOutPress = () => {
-    router.push('/Patron/In&Out/InOutAnalytics');
+  const handleLogout = () => {
+    // Logic for logout confirmation
+    onClose();
+
+    Alert.alert(
+      "Confirm Logout",
+      "Are you sure you want to log out?",
+      [
+        {
+          text: "Cancel",
+          onPress: () => { /* Do nothing */ },
+          style: "cancel"
+        },
+        {
+          text: "Yes, Logout",
+          onPress: () => {
+            // Redirect to login
+            router.replace('/Patron/Library Visitor/LoginPage');
+          },
+          style: 'destructive'
+        }
+      ]
+    );
   };
 
-  /**
-   * Navigate to Profile (User Profile)
-   */
-  const handleProfilePress = () => {
-    router.push('/Patron/Profile/UserProfile');
-  };
+  // if (!isOpen && slideAnim._value === -DRAWER_WIDTH) return null; // Removed to avoid private property access and ensure animation works. Controlled by zIndex/pointerEvents.
+  // *Correction*: We should render it to allow animation out. We can control visibility via pointerEvents or zIndex if needed, but absolute positioning handles it.
 
   return (
-    <View style={styles.navigationContainer}>
-      {/* Home Tab */}
-      <TouchableOpacity
-        style={[
-          styles.navTab,
-          active === 'home' && styles.navTabActive,
-        ]}
-        onPress={handleHomePress}
-        activeOpacity={0.7}
-      >
-        <MaterialIcons
-          name="home"
-          size={24}
-          color={active === 'home' ? '#001a4d' : '#999'}
-        />
-        <Text
-          style={[
-            styles.navLabel,
-            active === 'home' && styles.navLabelActive,
-          ]}
-        >
-          Home
-        </Text>
-      </TouchableOpacity>
+    <View style={[styles.container, !isOpen && { pointerEvents: 'none' }]}>
+      {/* Background Overlay */}
+      <TouchableWithoutFeedback onPress={onClose}>
+        <Animated.View style={[styles.overlay, { opacity: fadeAnim }]} />
+      </TouchableWithoutFeedback>
 
-      {/* In/Out Tab */}
-      <TouchableOpacity
+      {/* Drawer Content */}
+      <Animated.View
         style={[
-          styles.navTab,
-          active === 'inout' && styles.navTabActive,
+          styles.drawer,
+          { transform: [{ translateX: slideAnim }] },
         ]}
-        onPress={handleInOutPress}
-        activeOpacity={0.7}
       >
-        <MaterialIcons
-          name="input"
-          size={24}
-          color={active === 'inout' ? '#001a4d' : '#999'}
-        />
-        <Text
-          style={[
-            styles.navLabel,
-            active === 'inout' && styles.navLabelActive,
-          ]}
-        >
-          In/Out
-        </Text>
-      </TouchableOpacity>
+        {/* Header: User Info & Close Button */}
+        <View style={styles.header}>
+          <View style={styles.userInfoRow}>
+            <Image source={{ uri: defaultProfileImg }} style={styles.profileImg} />
+            <View style={styles.userInfo}>
+              <Text style={styles.userName}>Alex Doe</Text>
+              <Text style={styles.userRole}>Library User</Text>
+            </View>
+          </View>
 
-      {/* Profile Tab */}
-      <TouchableOpacity
-        style={[
-          styles.navTab,
-          active === 'profile' && styles.navTabActive,
-        ]}
-        onPress={handleProfilePress}
-        activeOpacity={0.7}
-      >
-        <MaterialIcons
-          name="person"
-          size={24}
-          color={active === 'profile' ? '#001a4d' : '#999'}
-        />
-        <Text
-          style={[
-            styles.navLabel,
-            active === 'profile' && styles.navLabelActive,
-          ]}
-        >
-          Profile
-        </Text>
-      </TouchableOpacity>
+          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            <MaterialCommunityIcons name="close" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Navigation Items */}
+        <View style={styles.navItems}>
+          <NavItem
+            icon="view-dashboard"
+            label="Dashboard"
+            isActive={activeTab === 'home' || activeTab === 'dashboard' || activeTab === 'Dashboard'}
+            onPress={() => handleNavigation('dashboard')}
+          />
+          <NavItem
+            icon="qrcode"
+            label="QR Code"
+            isActive={activeTab === 'qr'}
+            onPress={() => handleNavigation('qr')}
+          />
+          <NavItem
+            icon="floor-plan"
+            label="Floor Area Capacity"
+            isActive={activeTab === 'capacity'}
+            onPress={() => handleNavigation('capacity')}
+          />
+          <NavItem
+            icon="chart-bar"
+            label="Analytics"
+            isActive={activeTab === 'inout' || activeTab === 'analytics'}
+            onPress={() => handleNavigation('analytics')}
+          />
+          <NavItem
+            icon="cog"
+            label="Settings"
+            isActive={activeTab === 'settings' || activeTab === 'profile'}
+            onPress={() => handleNavigation('settings')}
+          />
+        </View>
+
+        {/* Footer: Logout */}
+        <View style={styles.footer}>
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+            <MaterialIcons name="logout" size={24} color="#FF2B2B" />
+            <Text style={styles.logoutText}>Logout</Text>
+          </TouchableOpacity>
+        </View>
+
+      </Animated.View>
     </View>
   );
 }
 
+function NavItem({ icon, label, isActive, onPress }: { icon: any, label: string, isActive: boolean, onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      style={[styles.navItem, isActive && styles.navItemActive]}
+      onPress={onPress}
+    >
+      <MaterialCommunityIcons
+        name={icon}
+        size={24}
+        color={isActive ? '#F8FAFC' : '#F8FAFC'} // Always light text
+        style={{ opacity: isActive ? 1 : 0.7 }}
+      />
+      <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>{label}</Text>
+    </TouchableOpacity>
+  )
+}
+
 const styles = StyleSheet.create({
-  navigationContainer: {
+  container: {
     position: 'absolute',
+    top: 0,
     bottom: 0,
     left: 0,
     right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    paddingVertical: 12,
+    zIndex: 1000, // Above everything
+  },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  drawer: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    width: DRAWER_WIDTH,
+    backgroundColor: '#00104A', // Deep Blue
+    paddingTop: 50,
+    paddingHorizontal: 20,
     paddingBottom: 20,
-    elevation: 8,
+    elevation: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    zIndex: 100,
+    shadowOffset: { width: 5, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    justifyContent: 'space-between', // Push footer down
   },
-  navTab: {
+  header: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: width * 0.05,
-    paddingVertical: 8,
+    justifyContent: 'space-between', // Space between user info and close btn
+    marginBottom: 40,
+    marginTop: 20,
   },
-  navTabActive: {
-    borderBottomWidth: 3,
-    borderBottomColor: '#001a4d',
-    paddingVertical: 5,
+  userInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  profileImg: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: '#fff',
+    marginRight: 15,
+  },
+  userInfo: {
+    flex: 1,
+  },
+  closeBtn: {
+    padding: 8,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 20,
+  },
+  userName: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  userRole: {
+    color: '#ccc',
+    fontSize: 13,
+  },
+  navItems: {
+    flex: 1, // Take available space
+    gap: 10,
+  },
+  navItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 15,
+    borderRadius: 30, // Pill shape
+  },
+  navItemActive: {
+    backgroundColor: '#FF2B2B', // Val-Track Red
   },
   navLabel: {
-    fontSize: 12,
-    color: '#999',
-    fontWeight: '600',
-    marginTop: 4,
+    marginLeft: 15,
+    fontSize: 16,
+    color: '#F8FAFC',
+    opacity: 0.7,
   },
   navLabelActive: {
-    color: '#001a4d',
-    fontWeight: '700',
+    fontWeight: 'bold',
+    opacity: 1,
+  },
+  footer: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+    paddingTop: 20,
+  },
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  logoutText: {
+    color: '#FF2B2B',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 12,
   },
 });
