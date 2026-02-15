@@ -820,7 +820,7 @@ export default function SignUp({ onCancel, onComplete }: SignUpProps) {
             </View>
 
             {/* Title */}
-            <Text style={styles.headerTitle}>Sign Up (Step {step} of 5)</Text>
+            <Text style={styles.headerTitle}>Sign Up (Step {step} of 6)</Text>
           </View>
 
           {/* White Card Section */}
